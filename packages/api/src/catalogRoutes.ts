@@ -8,6 +8,7 @@ export function registerCatalogRoutes(app: Express): void {
     res.json({
       pricing: listPricingProviders(),
       identity: [
+        { id: "scrydex", label: "Scrydex", mode: process.env.SCRYDEX_API_KEY && process.env.SCRYDEX_TEAM_ID ? "LIVE" : "REQUIRES_API_KEY" },
         { id: "pokemontcg.io", label: "Pokémon TCG API", mode: process.env.POKEMONTCG_API_KEY ? "LIVE" : "LIVE" },
         { id: "tcgdex", label: "TCGdex", mode: "LIVE" },
       ],

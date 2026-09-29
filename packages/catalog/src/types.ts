@@ -1,6 +1,6 @@
 export interface PokemonCardIdentity {
   id: string;
-  source: "pokemontcg.io" | "tcgdex";
+  source: "pokemontcg.io" | "tcgdex" | "scrydex";
   name: string;
   setId: string;
   setName: string;

@@ -2,11 +2,12 @@ import type { CardIdentityQuery, PricingProvider, PricingResult, PriceQuote } fr
 import { tcgdexProvider } from "./providers/tcgdex.js";
 import { pokemonTcgApiProvider } from "./providers/pokemon-tcg-api.js";
 import { pricechartingProvider } from "./providers/pricecharting.js";
+import { scrydexProvider } from "./providers/scrydex.js";
 
 export * from "./types.js";
-export { tcgdexProvider, pokemonTcgApiProvider, pricechartingProvider };
+export { tcgdexProvider, pokemonTcgApiProvider, pricechartingProvider, scrydexProvider };
 
-const providers: PricingProvider[] = [pricechartingProvider, pokemonTcgApiProvider, tcgdexProvider];
+const providers: PricingProvider[] = [scrydexProvider, pricechartingProvider, pokemonTcgApiProvider, tcgdexProvider];
 
 export function listPricingProviders(): Array<{ id: string; label: string; mode: string; enabled: boolean }> {
   return providers.map((p) => ({ id: p.id, label: p.label, mode: p.mode, enabled: p.enabled }));

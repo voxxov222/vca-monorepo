@@ -1,9 +1,10 @@
 import type { CatalogSearchQuery, PokemonCardIdentity } from "./types.js";
 import { searchPokemonTcg } from "./pokemon-tcg.js";
 import { searchTcgdex } from "./tcgdex.js";
+import { searchScrydex } from "./scrydex.js";
 
 export * from "./types.js";
-export { searchPokemonTcg, searchTcgdex };
+export { searchPokemonTcg, searchTcgdex, searchScrydex };
 
 /** Prefer pokemontcg.io, fall back to TCGdex. Never invent cards. */
 export async function resolvePokemonIdentity(query: CatalogSearchQuery): Promise<{
@@ -18,10 +19,19 @@ export async function resolvePokemonIdentity(query: CatalogSearchQuery): Promise
   let candidates: PokemonCardIdentity[] = [];
 
   try {
-    candidates = await searchPokemonTcg(query);
-    if (candidates.length) providersUsed.push("pokemontcg.io");
+    candidates = await searchScrydex(query);
+    if (candidates.length) providersUsed.push("scrydex");
   } catch (e) {
-    warnings.push(e instanceof Error ? e.message : "PTCG_ERROR");
+    warnings.push(e instanceof Error ? e.message : "SCRYDEX_ERROR");
+  }
+
+  if (!candidates.length) {
+    try {
+      candidates = await searchPokemonTcg(query);
+      if (candidates.length) providersUsed.push("pokemontcg.io");
+    } catch (e) {
+      warnings.push(e instanceof Error ? e.message : "PTCG_ERROR");
+    }
   }
 
   if (!candidates.length) {

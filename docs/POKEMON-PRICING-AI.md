@@ -27,3 +27,10 @@
 Cursor marketplace has **no** dedicated Pokémon price plugin.
 Use open-source **`tcg-mcp`** (`uvx tcg-mcp`): Pokémon TCG API + PriceCharting + PSA tools.
 Runs on Grok Bot's computer and is available to this user's other agents once added.
+
+## Scrydex
+- Env: `SCRYDEX_API_KEY`, `SCRYDEX_TEAM_ID` (team `vca2`)
+- Endpoints: `https://api.scrydex.com/pokemon/v1/en/cards?include=prices`
+- Auth headers: `X-Api-Key`, `X-Team-ID`
+- If API returns `SUBSCRIPTION_INACTIVE` / HTTP 402, label **REQUIRES_API_KEY** (activate plan at scrydex.com) — never invent prices.
+- Preferred ahead of pokemontcg.io / TCGdex when LIVE.
