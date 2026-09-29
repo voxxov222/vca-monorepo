@@ -1,358 +1,591 @@
-import React, { useEffect, useRef } from 'react';
+import React, {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+} from 'react';
 import * as THREE from 'three';
+import { drawVcaLabel, type LabelStyle } from './drawVcaLabel';
 
-interface Slab3DCanvasProps {
+export type SlabEnvironment = 'void' | 'studio' | 'nebula';
+
+export interface Slab3DCanvasProps {
   cardImageUrl?: string;
-  grade?: number;
+  cardName?: string;
+  cardSet?: string;
+  cardNumber?: string;
+  /** Real grade only. null → RAW / UNGRADED. Never invent a grade. */
+  grade?: number | string | null;
   gradeText?: string;
-  serialNumber?: string;
-  className?: string;
+  /** Real serial only. null → DISPLAY PREVIEW · NOT CERTIFIED */
+  serialNumber?: string | null;
+  labelStyle?: LabelStyle;
+  environment?: SlabEnvironment;
+  lightTint?: string;
+  holoIntensity?: number;
+  cardOffset?: number;
+  showGrade?: boolean;
+  autoSpin?: boolean;
   interactive?: boolean;
+  className?: string;
+  onReady?: () => void;
 }
 
-export const Slab3DCanvas: React.FC<Slab3DCanvasProps> = ({
-  cardImageUrl = 'https://images.pokemontcg.io/sv3pt5/173_hires.png',
-  grade = 10,
-  gradeText = 'GEM MINT',
-  serialNumber = 'VCA-000-000-001',
-  className = 'w-full h-[400px]',
-  interactive = true
-}) => {
-  const mountRef = useRef<HTMLDivElement>(null);
+export interface Slab3DCanvasHandle {
+  flip: () => void;
+  reset: () => void;
+  setZoom: (factor: number) => void;
+  getZoom: () => number;
+}
 
-  useEffect(() => {
-    const container = mountRef.current;
-    if (!container) return;
-
-    const width = container.clientWidth || 400;
-    const height = container.clientHeight || 400;
-
-    // Scene, Camera, Renderer
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
-    camera.position.set(0, 0, 8);
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.shadowMap.enabled = true;
-    container.appendChild(renderer.domElement);
-
-    // Group for the floating Slab
-    const slabGroup = new THREE.Group();
-    scene.add(slabGroup);
-
-    // Background Particle Motes Field
-    const particleCount = 180;
-    const particleGeo = new THREE.BufferGeometry();
-    const particlePositions = new Float32Array(particleCount * 3);
-    const particleSpeeds = new Float32Array(particleCount);
-
-    for (let i = 0; i < particleCount; i++) {
-      particlePositions[i * 3] = (Math.random() - 0.5) * 16;
-      particlePositions[i * 3 + 1] = (Math.random() - 0.5) * 14;
-      particlePositions[i * 3 + 2] = (Math.random() - 0.5) * 10 - 2;
-      particleSpeeds[i] = 0.003 + Math.random() * 0.008;
-    }
-
-    particleGeo.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
-
-    const particleMat = new THREE.PointsMaterial({
-      color: 0x22d3ee,
-      size: 0.06,
-      transparent: true,
-      opacity: 0.45,
-      blending: THREE.AdditiveBlending
-    });
-
-    const particlesMesh = new THREE.Points(particleGeo, particleMat);
-    scene.add(particlesMesh);
-
-    // Outer Acrylic Slab Geometry
-    const slabWidth = 2.4;
-    const slabHeight = 3.6;
-    const slabThickness = 0.22;
-
-    const acrylicGeo = new THREE.BoxGeometry(slabWidth, slabHeight, slabThickness);
-    const acrylicMat = new THREE.MeshPhysicalMaterial({
-      color: 0xffffff,
-      transparent: true,
-      opacity: 0.38,
-      roughness: 0.05,
-      metalness: 0.15,
-      transmission: 0.92,
-      ior: 1.52,
-      reflectivity: 0.9,
-      clearcoat: 1.0,
-      clearcoatRoughness: 0.08,
-      side: THREE.DoubleSide
-    });
-    const acrylicMesh = new THREE.Mesh(acrylicGeo, acrylicMat);
-    slabGroup.add(acrylicMesh);
-
-    // Bevel frame outline
-    const borderEdges = new THREE.EdgesGeometry(acrylicGeo);
-    const borderMat = new THREE.LineBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0.6 });
-    const borderLine = new THREE.LineSegments(borderEdges, borderMat);
-    slabGroup.add(borderLine);
-
-    // Card Mesh inside Acrylic
-    const textureLoader = new THREE.TextureLoader();
-    textureLoader.crossOrigin = 'Anonymous';
-    const cardTexture = textureLoader.load(cardImageUrl);
-
-    const cardGeo = new THREE.PlaneGeometry(1.8, 2.5);
-    const cardMat = new THREE.MeshBasicMaterial({ map: cardTexture, side: THREE.DoubleSide });
-    const cardMesh = new THREE.Mesh(cardGeo, cardMat);
-    cardMesh.position.set(0, -0.35, 0.01);
-    slabGroup.add(cardMesh);
-
-    // Top Holographic Header Nameplate
-    const headerGeo = new THREE.PlaneGeometry(2.1, 0.55);
-    const canvasHeader = document.createElement('canvas');
-    canvasHeader.width = 512;
-    canvasHeader.height = 128;
-    const ctx = canvasHeader.getContext('2d');
-
-    const redrawHeaderCanvas = (shiftOffset = 0) => {
-      if (!ctx) return;
-      ctx.clearRect(0, 0, 512, 128);
-
-      // Dynamic Holographic Gradient with rotation shift
-      const grad = ctx.createLinearGradient(shiftOffset, 0, 512 + shiftOffset, 128);
-      grad.addColorStop(0, '#22d3ee');
-      grad.addColorStop(0.25, '#c084fc');
-      grad.addColorStop(0.5, '#fbbf24');
-      grad.addColorStop(0.75, '#38bdf8');
-      grad.addColorStop(1, '#22d3ee');
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, 512, 128);
-
-      // Light sweep sheen band
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
-      ctx.beginPath();
-      ctx.moveTo(100 + (shiftOffset % 300), 0);
-      ctx.lineTo(180 + (shiftOffset % 300), 0);
-      ctx.lineTo(120 + (shiftOffset % 300), 128);
-      ctx.lineTo(40 + (shiftOffset % 300), 128);
-      ctx.closePath();
-      ctx.fill();
-
-      // Header Copy
-      ctx.fillStyle = '#05070a';
-      ctx.font = '900 48px Orbitron, sans-serif';
-      ctx.fillText('VCA', 24, 75);
-
-      ctx.beginPath();
-      ctx.moveTo(170, 20);
-      ctx.lineTo(170, 108);
-      ctx.lineWidth = 4;
-      ctx.strokeStyle = '#05070a';
-      ctx.stroke();
-
-      ctx.font = '900 38px Orbitron, sans-serif';
-      ctx.fillText(`#${grade}`, 200, 60);
-
-      ctx.font = '800 20px Orbitron, sans-serif';
-      ctx.fillText(gradeText, 200, 95);
-
-      ctx.font = '600 16px "JetBrains Mono", monospace';
-      ctx.fillText(serialNumber, 24, 115);
-    };
-
-    redrawHeaderCanvas(0);
-
-    const headerTexture = new THREE.CanvasTexture(canvasHeader);
-    const headerMat = new THREE.MeshBasicMaterial({ map: headerTexture, side: THREE.DoubleSide });
-    const headerMesh = new THREE.Mesh(headerGeo, headerMat);
-    headerMesh.position.set(0, 1.25, 0.02);
-    slabGroup.add(headerMesh);
-
-    // Glowing Pedestal Dais below
-    const daisGeo = new THREE.CylinderGeometry(2.0, 2.5, 0.3, 32);
-    const daisMat = new THREE.MeshStandardMaterial({
-      color: 0x0a101d,
-      roughness: 0.2,
-      metalness: 0.8,
-      emissive: 0x082f49,
-      emissiveIntensity: 0.5
-    });
-    const daisMesh = new THREE.Mesh(daisGeo, daisMat);
-    daisMesh.position.set(0, -2.4, 0);
-    scene.add(daisMesh);
-
-    const daisRingGeo = new THREE.RingGeometry(1.8, 2.0, 32);
-    const daisRingMat = new THREE.MeshBasicMaterial({ color: 0x22d3ee, side: THREE.DoubleSide });
-    const daisRing = new THREE.Mesh(daisRingGeo, daisRingMat);
-    daisRing.rotation.x = Math.PI / 2;
-    daisRing.position.set(0, -2.24, 0);
-    scene.add(daisRing);
-
-    // Lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
-    scene.add(ambientLight);
-
-    const cyanPointLight = new THREE.PointLight(0x22d3ee, 3.5, 12);
-    cyanPointLight.position.set(3, 3, 4);
-    scene.add(cyanPointLight);
-
-    const violetPointLight = new THREE.PointLight(0xc084fc, 2.5, 10);
-    violetPointLight.position.set(-3, -2, 3);
-    scene.add(violetPointLight);
-
-    // Interactivity: Drag to Rotate with Momentum & Touch Support
-    let isDragging = false;
-    let previousPosition = { x: 0, y: 0 };
-    let velocity = { x: 0, y: 0 };
-    let idleTimer: ReturnType<typeof setTimeout> | null = null;
-    let isIdle = false;
-
-    const resetIdleTimer = () => {
-      isIdle = false;
-      if (idleTimer) clearTimeout(idleTimer);
-      idleTimer = setTimeout(() => {
-        isIdle = true;
-      }, 4000); // Resume auto-rotate after 4s idle
-    };
-
-    const handlePointerDown = (clientX: number, clientY: number) => {
-      isDragging = true;
-      previousPosition = { x: clientX, y: clientY };
-      velocity = { x: 0, y: 0 };
-      resetIdleTimer();
-    };
-
-    const handlePointerMove = (clientX: number, clientY: number) => {
-      if (!isDragging || !interactive) return;
-      const deltaX = clientX - previousPosition.x;
-      const deltaY = clientY - previousPosition.y;
-
-      velocity = { x: deltaX * 0.008, y: deltaY * 0.008 };
-
-      slabGroup.rotation.y += velocity.x;
-      slabGroup.rotation.x += velocity.y;
-
-      previousPosition = { x: clientX, y: clientY };
-      resetIdleTimer();
-    };
-
-    const handlePointerUp = () => {
-      isDragging = false;
-      resetIdleTimer();
-    };
-
-    const onMouseDown = (e: MouseEvent) => handlePointerDown(e.clientX, e.clientY);
-    const onMouseMove = (e: MouseEvent) => handlePointerMove(e.clientX, e.clientY);
-    const onMouseUp = () => handlePointerUp();
-
-    const onTouchStart = (e: TouchEvent) => {
-      if (e.touches.length === 1) handlePointerDown(e.touches[0].clientX, e.touches[0].clientY);
-    };
-    const onTouchMove = (e: TouchEvent) => {
-      if (e.touches.length === 1) handlePointerMove(e.touches[0].clientX, e.touches[0].clientY);
-    };
-    const onTouchEnd = () => handlePointerUp();
-
-    if (interactive) {
-      container.addEventListener('mousedown', onMouseDown);
-      window.addEventListener('mousemove', onMouseMove);
-      window.addEventListener('mouseup', onMouseUp);
-
-      container.addEventListener('touchstart', onTouchStart, { passive: true });
-      window.addEventListener('touchmove', onTouchMove, { passive: true });
-      window.addEventListener('touchend', onTouchEnd);
-    }
-
-    resetIdleTimer();
-
-    // Animation Loop
-    let animationFrameId: number;
-    let clock = new THREE.Clock();
-
-    const animate = () => {
-      animationFrameId = requestAnimationFrame(animate);
-      const elapsedTime = clock.getElapsedTime();
-
-      // Particle Drift Animation
-      const positions = particleGeo.attributes.position.array as Float32Array;
-      for (let i = 0; i < particleCount; i++) {
-        positions[i * 3 + 1] += particleSpeeds[i];
-        if (positions[i * 3 + 1] > 7) positions[i * 3 + 1] = -7;
-      }
-      particleGeo.attributes.position.needsUpdate = true;
-
-      // Momentum Velocity Damping
-      if (!isDragging) {
-        if (Math.abs(velocity.x) > 0.0001 || Math.abs(velocity.y) > 0.0001) {
-          slabGroup.rotation.y += velocity.x;
-          slabGroup.rotation.x += velocity.y;
-          velocity.x *= 0.94; // inertia damping
-          velocity.y *= 0.94;
-        }
-
-        // Idle floating sine wave and slow spin
-        if (isIdle) {
-          slabGroup.position.y = Math.sin(elapsedTime * 1.5) * 0.12;
-          slabGroup.rotation.y += 0.006;
-          slabGroup.rotation.x *= 0.98;
-        }
-      }
-
-      // Shimmer sweep texture update based on slab rotation
-      if (headerTexture && ctx) {
-        const angleShift = Math.floor(slabGroup.rotation.y * 120);
-        redrawHeaderCanvas(angleShift);
-        headerTexture.needsUpdate = true;
-      }
-
-      renderer.render(scene, camera);
-    };
-
-    animate();
-
-    const handleResize = () => {
-      if (!container) return;
-      const newW = container.clientWidth;
-      const newH = container.clientHeight;
-      camera.aspect = newW / newH;
-      camera.updateProjectionMatrix();
-      renderer.setSize(newW, newH);
-    };
-
-    window.addEventListener('resize', handleResize);
-
-    return () => {
-      cancelAnimationFrame(animationFrameId);
-      if (idleTimer) clearTimeout(idleTimer);
-      window.removeEventListener('resize', handleResize);
-      if (interactive) {
-        container.removeEventListener('mousedown', onMouseDown);
-        window.removeEventListener('mousemove', onMouseMove);
-        window.removeEventListener('mouseup', onMouseUp);
-        container.removeEventListener('touchstart', onTouchStart);
-        window.removeEventListener('touchmove', onTouchMove);
-        window.removeEventListener('touchend', onTouchEnd);
-      }
-      if (container.contains(renderer.domElement)) {
-        container.removeChild(renderer.domElement);
-      }
-      renderer.dispose();
-    };
-  }, [cardImageUrl, grade, gradeText, serialNumber, interactive]);
-
-  return (
-    <div className={`relative flex items-center justify-center overflow-hidden rounded-xl border border-cyan-500/20 bg-slate-950/80 backdrop-blur-md ${className}`}>
-      {/* HUD scanlines */}
-      <div className="absolute inset-0 hud-scanlines pointer-events-none z-10 opacity-30" />
-      
-      {/* 3D Canvas Mount Point */}
-      <div ref={mountRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
-
-      {/* Control prompt overlay */}
-      <div className="absolute bottom-3 left-3 z-20 flex items-center gap-2 px-2.5 py-1 rounded-full bg-slate-900/90 border border-slate-700/60 text-[11px] font-mono text-cyan-300">
-        <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-        <span>3D HOLOGRAPHIC SLAB • DRAG TO ROTATE</span>
-      </div>
-    </div>
-  );
+const ENV_BG: Record<SlabEnvironment, number> = {
+  studio: 0xe8eef6,
+  void: 0x0b1220,
+  nebula: 0x1a1230,
 };
+
+function parseTint(hex: string | undefined, fallback: number): number {
+  if (!hex) return fallback;
+  const cleaned = hex.replace('#', '').trim();
+  if (!/^[0-9a-fA-F]{6}$/.test(cleaned)) return fallback;
+  return parseInt(cleaned, 16);
+}
+
+function prefersReducedMotion(): boolean {
+  if (typeof window === 'undefined' || !window.matchMedia) return false;
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+export const Slab3DCanvas = forwardRef<Slab3DCanvasHandle, Slab3DCanvasProps>(
+  function Slab3DCanvas(
+    {
+      cardImageUrl,
+      cardName,
+      cardSet,
+      cardNumber,
+      grade = null,
+      gradeText,
+      serialNumber = null,
+      labelStyle = 'classic',
+      environment = 'studio',
+      lightTint = '#244cb4',
+      holoIntensity = 55,
+      cardOffset = 0,
+      showGrade = true,
+      autoSpin = false,
+      interactive = true,
+      className = 'w-full h-[480px]',
+      onReady,
+    },
+    ref,
+  ) {
+    const mountRef = useRef<HTMLDivElement>(null);
+    const apiRef = useRef<{
+      flip: () => void;
+      reset: () => void;
+      setZoom: (f: number) => void;
+      getZoom: () => number;
+    } | null>(null);
+
+    // Latest props for the animation loop without rebuilding the scene
+    const propsRef = useRef({
+      cardName,
+      cardSet,
+      cardNumber,
+      grade,
+      gradeText,
+      serialNumber,
+      labelStyle,
+      holoIntensity,
+      showGrade,
+      autoSpin,
+      cardOffset,
+      environment,
+      lightTint,
+    });
+    propsRef.current = {
+      cardName,
+      cardSet,
+      cardNumber,
+      grade,
+      gradeText,
+      serialNumber,
+      labelStyle,
+      holoIntensity,
+      showGrade,
+      autoSpin,
+      cardOffset,
+      environment,
+      lightTint,
+    };
+
+    useImperativeHandle(ref, () => ({
+      flip: () => apiRef.current?.flip(),
+      reset: () => apiRef.current?.reset(),
+      setZoom: (f: number) => apiRef.current?.setZoom(f),
+      getZoom: () => apiRef.current?.getZoom() ?? 1,
+    }));
+
+    useEffect(() => {
+      const container = mountRef.current;
+      if (!container) return;
+
+      const width = container.clientWidth || 400;
+      const height = container.clientHeight || 480;
+      const reducedMotion = prefersReducedMotion();
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(ENV_BG[environment] ?? ENV_BG.studio);
+
+      const camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 100);
+      const baseCameraZ = 7.2;
+      let zoomFactor = 1;
+      camera.position.set(0, 0.15, baseCameraZ);
+
+      const renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: true,
+        powerPreference: 'high-performance',
+      });
+      renderer.setSize(width, height);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      container.appendChild(renderer.domElement);
+
+      const slabGroup = new THREE.Group();
+      scene.add(slabGroup);
+
+      // --- Particle motes ---
+      const particleCount = 120;
+      const particleGeo = new THREE.BufferGeometry();
+      const particlePositions = new Float32Array(particleCount * 3);
+      const particleSpeeds = new Float32Array(particleCount);
+      for (let i = 0; i < particleCount; i++) {
+        particlePositions[i * 3] = (Math.random() - 0.5) * 14;
+        particlePositions[i * 3 + 1] = (Math.random() - 0.5) * 12;
+        particlePositions[i * 3 + 2] = (Math.random() - 0.5) * 8 - 1;
+        particleSpeeds[i] = 0.002 + Math.random() * 0.006;
+      }
+      particleGeo.setAttribute(
+        'position',
+        new THREE.BufferAttribute(particlePositions, 3),
+      );
+      const particleMat = new THREE.PointsMaterial({
+        color: 0x22d3ee,
+        size: 0.05,
+        transparent: true,
+        opacity: 0.4,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const particlesMesh = new THREE.Points(particleGeo, particleMat);
+      scene.add(particlesMesh);
+
+      // --- Acrylic slab ---
+      const slabWidth = 2.35;
+      const slabHeight = 3.55;
+      const slabThickness = 0.2;
+      const acrylicGeo = new THREE.BoxGeometry(slabWidth, slabHeight, slabThickness);
+      const acrylicMat = new THREE.MeshPhysicalMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.32,
+        roughness: 0.04,
+        metalness: 0.12,
+        transmission: 0.9,
+        thickness: 0.4,
+        ior: 1.5,
+        reflectivity: 0.85,
+        clearcoat: 1,
+        clearcoatRoughness: 0.06,
+        side: THREE.DoubleSide,
+      });
+      const acrylicMesh = new THREE.Mesh(acrylicGeo, acrylicMat);
+      acrylicMesh.castShadow = true;
+      slabGroup.add(acrylicMesh);
+
+      const borderEdges = new THREE.EdgesGeometry(acrylicGeo);
+      const borderMat = new THREE.LineBasicMaterial({
+        color: 0x67e8f9,
+        transparent: true,
+        opacity: 0.45,
+      });
+      const borderLine = new THREE.LineSegments(borderEdges, borderMat);
+      slabGroup.add(borderLine);
+
+      // --- Card plane ---
+      const cardGeo = new THREE.PlaneGeometry(1.78, 2.48);
+      const cardMat = new THREE.MeshStandardMaterial({
+        color: 0x1e293b,
+        roughness: 0.55,
+        metalness: 0.05,
+        side: THREE.DoubleSide,
+      });
+      const cardMesh = new THREE.Mesh(cardGeo, cardMat);
+      cardMesh.position.set(0, -0.32 + (cardOffset || 0) * 0.02, 0.012);
+      slabGroup.add(cardMesh);
+
+      const texturesToDispose: THREE.Texture[] = [];
+      let cardTexture: THREE.Texture | null = null;
+
+      if (cardImageUrl) {
+        const loader = new THREE.TextureLoader();
+        loader.setCrossOrigin('Anonymous');
+        loader.load(
+          cardImageUrl,
+          (tex) => {
+            tex.colorSpace = THREE.SRGBColorSpace;
+            cardTexture = tex;
+            texturesToDispose.push(tex);
+            cardMat.map = tex;
+            cardMat.color.set(0xffffff);
+            cardMat.needsUpdate = true;
+          },
+          undefined,
+          () => {
+            // Fallback solid if image fails (CORS / 404) — keep slate color
+            cardMat.map = null;
+            cardMat.color.set(0x334155);
+            cardMat.needsUpdate = true;
+          },
+        );
+      }
+
+      // --- Animated digital VCA label (CanvasTexture) ---
+      const labelCanvas = document.createElement('canvas');
+      labelCanvas.width = 1024;
+      labelCanvas.height = 256;
+      const labelCtx = labelCanvas.getContext('2d');
+      const labelTexture = new THREE.CanvasTexture(labelCanvas);
+      labelTexture.colorSpace = THREE.SRGBColorSpace;
+      labelTexture.minFilter = THREE.LinearFilter;
+      labelTexture.magFilter = THREE.LinearFilter;
+      texturesToDispose.push(labelTexture);
+
+      const paintLabel = (time: number, rotY: number) => {
+        if (!labelCtx) return;
+        const p = propsRef.current;
+        const gradeForLabel = p.showGrade ? p.grade : null;
+        drawVcaLabel(labelCtx, labelCanvas.width, labelCanvas.height, {
+          cardName: p.cardName,
+          cardSet: p.cardSet,
+          cardNumber: p.cardNumber,
+          grade: gradeForLabel,
+          gradeText: p.gradeText,
+          serialNumber: p.serialNumber,
+          labelStyle: p.labelStyle,
+          holoIntensity: p.holoIntensity,
+          time,
+          rotationY: rotY,
+        });
+        labelTexture.needsUpdate = true;
+      };
+      paintLabel(0, 0);
+
+      const labelGeo = new THREE.PlaneGeometry(2.05, 0.52);
+      const labelMat = new THREE.MeshBasicMaterial({
+        map: labelTexture,
+        side: THREE.DoubleSide,
+        transparent: true,
+      });
+      const labelMesh = new THREE.Mesh(labelGeo, labelMat);
+      labelMesh.position.set(0, 1.28, 0.025);
+      slabGroup.add(labelMesh);
+
+      // Soft pedestal / dais
+      const daisGeo = new THREE.CylinderGeometry(1.85, 2.25, 0.22, 48);
+      const daisMat = new THREE.MeshStandardMaterial({
+        color: 0x0f172a,
+        roughness: 0.35,
+        metalness: 0.7,
+        emissive: parseTint(lightTint, 0x244cb4),
+        emissiveIntensity: 0.25,
+      });
+      const daisMesh = new THREE.Mesh(daisGeo, daisMat);
+      daisMesh.position.set(0, -2.35, 0);
+      daisMesh.receiveShadow = true;
+      scene.add(daisMesh);
+
+      const daisRingGeo = new THREE.RingGeometry(1.7, 1.95, 48);
+      const daisRingMat = new THREE.MeshBasicMaterial({
+        color: parseTint(lightTint, 0x22d3ee),
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.55,
+      });
+      const daisRing = new THREE.Mesh(daisRingGeo, daisRingMat);
+      daisRing.rotation.x = -Math.PI / 2;
+      daisRing.position.set(0, -2.22, 0);
+      scene.add(daisRing);
+
+      // Lighting + fog by environment
+      const ambient = new THREE.AmbientLight(0xffffff, environment === 'void' ? 0.55 : 0.95);
+      scene.add(ambient);
+
+      const keyLight = new THREE.PointLight(parseTint(lightTint, 0x22d3ee), 3.2, 18);
+      keyLight.position.set(3.2, 3.5, 4.5);
+      scene.add(keyLight);
+
+      const fillLight = new THREE.PointLight(0xc084fc, environment === 'nebula' ? 2.8 : 1.6, 14);
+      fillLight.position.set(-3.5, -1.5, 3);
+      scene.add(fillLight);
+
+      const rimLight = new THREE.DirectionalLight(0xffffff, 0.6);
+      rimLight.position.set(0, 4, -3);
+      scene.add(rimLight);
+
+      if (environment === 'nebula') {
+        scene.fog = new THREE.FogExp2(0x1a1230, 0.035);
+        const nebulaA = new THREE.PointLight(0xa78bfa, 2.2, 16);
+        nebulaA.position.set(-4, 2, -2);
+        scene.add(nebulaA);
+        const nebulaB = new THREE.PointLight(0x22d3ee, 1.8, 14);
+        nebulaB.position.set(4, -1, -1);
+        scene.add(nebulaB);
+      } else if (environment === 'void') {
+        scene.fog = new THREE.FogExp2(0x0b1220, 0.028);
+      } else {
+        scene.fog = null;
+        const studioFill = new THREE.HemisphereLight(0xffffff, 0xcbd5e1, 0.55);
+        scene.add(studioFill);
+      }
+
+      // Interaction state
+      let isDragging = false;
+      let previousPosition = { x: 0, y: 0 };
+      let velocity = { x: 0, y: 0 };
+      let idleTimer: ReturnType<typeof setTimeout> | null = null;
+      let isIdle = false;
+      let disposed = false;
+      let lastLabelPaint = 0;
+
+      const resetIdleTimer = () => {
+        isIdle = false;
+        if (idleTimer) clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => {
+          isIdle = true;
+        }, 3000);
+      };
+
+      const handlePointerDown = (clientX: number, clientY: number) => {
+        isDragging = true;
+        previousPosition = { x: clientX, y: clientY };
+        velocity = { x: 0, y: 0 };
+        resetIdleTimer();
+      };
+
+      const handlePointerMove = (clientX: number, clientY: number) => {
+        if (!isDragging || !interactive) return;
+        const deltaX = clientX - previousPosition.x;
+        const deltaY = clientY - previousPosition.y;
+        velocity = { x: deltaX * 0.007, y: deltaY * 0.007 };
+        slabGroup.rotation.y += velocity.x;
+        slabGroup.rotation.x += velocity.y;
+        slabGroup.rotation.x = Math.max(-0.85, Math.min(0.85, slabGroup.rotation.x));
+        previousPosition = { x: clientX, y: clientY };
+        resetIdleTimer();
+      };
+
+      const handlePointerUp = () => {
+        isDragging = false;
+        resetIdleTimer();
+      };
+
+      const onMouseDown = (e: MouseEvent) => handlePointerDown(e.clientX, e.clientY);
+      const onMouseMove = (e: MouseEvent) => handlePointerMove(e.clientX, e.clientY);
+      const onMouseUp = () => handlePointerUp();
+      const onTouchStart = (e: TouchEvent) => {
+        if (e.touches.length === 1) {
+          handlePointerDown(e.touches[0].clientX, e.touches[0].clientY);
+        }
+      };
+      const onTouchMove = (e: TouchEvent) => {
+        if (e.touches.length === 1) {
+          handlePointerMove(e.touches[0].clientX, e.touches[0].clientY);
+        }
+      };
+      const onTouchEnd = () => handlePointerUp();
+
+      const onWheel = (e: WheelEvent) => {
+        e.preventDefault();
+        zoomFactor = Math.max(0.65, Math.min(1.45, zoomFactor - e.deltaY * 0.001));
+        camera.position.z = baseCameraZ / zoomFactor;
+        resetIdleTimer();
+      };
+
+      if (interactive) {
+        container.addEventListener('mousedown', onMouseDown);
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+        container.addEventListener('touchstart', onTouchStart, { passive: true });
+        window.addEventListener('touchmove', onTouchMove, { passive: true });
+        window.addEventListener('touchend', onTouchEnd);
+        container.addEventListener('wheel', onWheel, { passive: false });
+      }
+      resetIdleTimer();
+
+      // Imperative API for Flip / Reset / Zoom controls
+      const initialRot = { x: -0.12, y: -0.32 };
+      slabGroup.rotation.x = initialRot.x;
+      slabGroup.rotation.y = initialRot.y;
+
+      apiRef.current = {
+        flip: () => {
+          slabGroup.rotation.y += Math.PI;
+          velocity = { x: 0, y: 0 };
+          resetIdleTimer();
+        },
+        reset: () => {
+          slabGroup.rotation.x = initialRot.x;
+          slabGroup.rotation.y = initialRot.y;
+          slabGroup.position.y = 0;
+          velocity = { x: 0, y: 0 };
+          zoomFactor = 1;
+          camera.position.z = baseCameraZ;
+          resetIdleTimer();
+        },
+        setZoom: (factor: number) => {
+          zoomFactor = Math.max(0.65, Math.min(1.45, factor));
+          camera.position.z = baseCameraZ / zoomFactor;
+        },
+        getZoom: () => zoomFactor,
+      };
+
+      const clock = new THREE.Clock();
+      let animationFrameId = 0;
+
+      const animate = () => {
+        if (disposed) return;
+        animationFrameId = requestAnimationFrame(animate);
+        const elapsed = clock.getElapsedTime();
+        const p = propsRef.current;
+
+        // Sync live prop changes that don't need scene rebuild
+        cardMesh.position.y = -0.32 + (p.cardOffset || 0) * 0.02;
+        const tint = parseTint(p.lightTint, 0x244cb4);
+        daisMat.emissive.setHex(tint);
+        daisRingMat.color.setHex(tint);
+        keyLight.color.setHex(tint);
+
+        // Particles
+        const positions = particleGeo.attributes.position.array as Float32Array;
+        for (let i = 0; i < particleCount; i++) {
+          positions[i * 3 + 1] += particleSpeeds[i];
+          if (positions[i * 3 + 1] > 6) positions[i * 3 + 1] = -6;
+        }
+        particleGeo.attributes.position.needsUpdate = true;
+
+        // Momentum
+        if (!isDragging) {
+          if (Math.abs(velocity.x) > 0.00008 || Math.abs(velocity.y) > 0.00008) {
+            slabGroup.rotation.y += velocity.x;
+            slabGroup.rotation.x += velocity.y;
+            slabGroup.rotation.x = Math.max(-0.85, Math.min(0.85, slabGroup.rotation.x));
+            velocity.x *= 0.94;
+            velocity.y *= 0.94;
+          }
+
+          const allowSpin = p.autoSpin && !reducedMotion && isIdle;
+          if (allowSpin) {
+            slabGroup.position.y = Math.sin(elapsed * 1.4) * 0.1;
+            slabGroup.rotation.y += 0.005;
+            slabGroup.rotation.x += (initialRot.x - slabGroup.rotation.x) * 0.02;
+          } else if (!isDragging) {
+            slabGroup.position.y += (0 - slabGroup.position.y) * 0.05;
+          }
+        }
+
+        // Label redraw ~30fps
+        if (elapsed - lastLabelPaint > 1 / 30) {
+          paintLabel(elapsed, slabGroup.rotation.y);
+          lastLabelPaint = elapsed;
+        }
+
+        renderer.render(scene, camera);
+      };
+      animate();
+
+      const handleResize = () => {
+        if (!container || disposed) return;
+        const w = container.clientWidth;
+        const h = container.clientHeight;
+        if (w < 1 || h < 1) return;
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+      };
+      window.addEventListener('resize', handleResize);
+
+      onReady?.();
+
+      return () => {
+        disposed = true;
+        cancelAnimationFrame(animationFrameId);
+        if (idleTimer) clearTimeout(idleTimer);
+        window.removeEventListener('resize', handleResize);
+        if (interactive) {
+          container.removeEventListener('mousedown', onMouseDown);
+          window.removeEventListener('mousemove', onMouseMove);
+          window.removeEventListener('mouseup', onMouseUp);
+          container.removeEventListener('touchstart', onTouchStart);
+          window.removeEventListener('touchmove', onTouchMove);
+          window.removeEventListener('touchend', onTouchEnd);
+          container.removeEventListener('wheel', onWheel);
+        }
+        apiRef.current = null;
+
+        if (container.contains(renderer.domElement)) {
+          container.removeChild(renderer.domElement);
+        }
+
+        acrylicGeo.dispose();
+        acrylicMat.dispose();
+        borderEdges.dispose();
+        borderMat.dispose();
+        cardGeo.dispose();
+        cardMat.dispose();
+        labelGeo.dispose();
+        labelMat.dispose();
+        particleGeo.dispose();
+        particleMat.dispose();
+        daisGeo.dispose();
+        daisMat.dispose();
+        daisRingGeo.dispose();
+        daisRingMat.dispose();
+        for (const t of texturesToDispose) t.dispose();
+        if (cardTexture && !texturesToDispose.includes(cardTexture)) {
+          cardTexture.dispose();
+        }
+        renderer.dispose();
+      };
+      // Rebuild when structural inputs change; live props use propsRef
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [cardImageUrl, environment, interactive]);
+
+    return (
+      <div
+        className={`relative flex items-center justify-center overflow-hidden rounded-3xl border border-cyan-500/25 bg-slate-950/80 backdrop-blur-md ${className}`}
+      >
+        <div
+          ref={mountRef}
+          className="h-full w-full cursor-grab active:cursor-grabbing"
+          role="img"
+          aria-label={`${cardName ?? 'Card'} digital VCA slab display. Drag to rotate. Not a certificate.`}
+        />
+
+        <div className="pointer-events-none absolute bottom-3 left-3 z-20 flex flex-col gap-1.5">
+          <div className="flex items-center gap-2 rounded-full border border-slate-700/60 bg-slate-900/90 px-2.5 py-1 font-mono text-[10px] text-cyan-300 sm:text-[11px]">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-cyan-400" />
+            <span>3D VCA SLAB · DRAG TO ROTATE</span>
+          </div>
+          <div className="rounded-full border border-amber-500/40 bg-slate-900/90 px-2.5 py-1 font-mono text-[9px] font-bold uppercase tracking-wide text-amber-200/95 sm:text-[10px]">
+            DIGITAL DISPLAY · NOT A CERTIFICATE
+          </div>
+        </div>
+      </div>
+    );
+  },
+);
+
+export default Slab3DCanvas;

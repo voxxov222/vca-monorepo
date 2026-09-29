@@ -16,7 +16,10 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@vca/three-slab": path.resolve(__dirname, "../../packages/three-slab/src"),
+      three: path.resolve(__dirname, "../../node_modules/three"),
     },
+    dedupe: ["three", "react", "react-dom"],
   },
   // Expose both VITE_* (Vite default) and EXPO_PUBLIC_* (Rork's cross-platform
   // public-env convention, written by tools like getOrCreateAuthConfig).

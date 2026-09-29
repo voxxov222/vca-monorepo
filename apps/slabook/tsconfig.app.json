@@ -18,7 +18,9 @@
     "noImplicitAny": false,
     "noFallthroughCasesInSwitch": false,
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@vca/three-slab": ["../../packages/three-slab/src"],
+      "@vca/three-slab/*": ["../../packages/three-slab/src/*"]
     }
   },
   "include": ["src"]
