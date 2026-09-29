@@ -50,7 +50,7 @@ function mapCertificateVerificationStatus(status: string): string {
   if (status === 'REVOKED') return 'REVOKED';
   if (status === 'SUSPENDED') return 'SUSPENDED';
   if (status === 'CERTIFIED' || status === 'VERIFIED') return 'AUTHENTIC_RECORD';
-  return 'AUTHENTIC_RECORD';
+  return 'STATUS_UNAVAILABLE';
 }
 
 export function registerVerificationRoutes(app: Express): void {
@@ -86,7 +86,7 @@ export function registerVerificationRoutes(app: Express): void {
   /** Same public shape as QR verify — preferred by Slabook `/verify/:serial`. */
   app.get('/api/verify/serial/:serial', async (req, res, next) => {
     try {
-      const serial = decodeURIComponent(String(req.params.serial || '')).trim();
+      const serial = String(req.params.serial || '').trim();
       if (!serial) { res.status(400).json({ success: false, verificationStatus: 'NOT_FOUND', error: 'SERIAL_REQUIRED' }); return; }
       const certificate = await prisma.certificate.findUnique({
         where: { serialNo: serial },

@@ -141,22 +141,19 @@ export function registerGradingRoutes(app: Express): void {
           },
         });
 
-        // Ensure an ASSEMBLY slab exists so NFC bind can proceed later.
-        let slab = await tx.slab.findUnique({ where: { certificateId: certificate.id } });
-        if (!slab) {
-          slab = await tx.slab.create({
-            data: { certificateId: certificate.id, status: 'ASSEMBLY', model: 'VCA-DIGITAL-1' },
-          });
-          await tx.auditLog.create({
-            data: {
-              actorId: req.userId!,
-              action: 'SLAB_CREATED',
-              entityType: 'Slab',
-              entityId: slab.id,
-              metadata: { certificateId: certificate.id, status: 'ASSEMBLY' },
-            },
-          });
-        }
+        // Create an ASSEMBLY slab so NFC bind can proceed later.
+        const slab = await tx.slab.create({
+          data: { certificateId: certificate.id, status: 'ASSEMBLY', model: 'VCA-DIGITAL-1' },
+        });
+        await tx.auditLog.create({
+          data: {
+            actorId: req.userId!,
+            action: 'SLAB_CREATED',
+            entityType: 'Slab',
+            entityId: slab.id,
+            metadata: { certificateId: certificate.id, status: 'ASSEMBLY' },
+          },
+        });
 
         await tx.submission.update({ where: { id: req.params.submissionId }, data: { status: 'CERTIFIED' } });
         await tx.auditLog.create({ data: { actorId: req.userId!, action: 'GRADE_FINALIZED', entityType: 'GradingReport', entityId: updatedReport.id, metadata: { finalGrade: grade, methodologyVersion: updatedReport.methodologyVersion } } });
