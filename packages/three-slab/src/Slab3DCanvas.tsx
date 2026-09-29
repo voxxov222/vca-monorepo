@@ -41,7 +41,8 @@ export interface Slab3DCanvasHandle {
 const ENV_BG: Record<SlabEnvironment, number> = {
   studio: 0xe8eef6,
   void: 0x0b1220,
-  nebula: 0x1a1230,
+  // Align with CSS .slab-stage-nebula light gallery (#f7f8fb), not purple AI-slop
+  nebula: 0xf7f8fb,
 };
 
 function parseTint(hex: string | undefined, fallback: number): number {
@@ -172,10 +173,10 @@ export const Slab3DCanvas = forwardRef<Slab3DCanvasHandle, Slab3DCanvasProps>(
         new THREE.BufferAttribute(particlePositions, 3),
       );
       const particleMat = new THREE.PointsMaterial({
-        color: 0x22d3ee,
-        size: 0.05,
+        color: environment === 'void' ? 0x94a3b8 : 0x244cb4,
+        size: environment === 'void' ? 0.05 : 0.04,
         transparent: true,
-        opacity: 0.4,
+        opacity: environment === 'void' ? 0.35 : 0.22,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
       });
@@ -207,9 +208,9 @@ export const Slab3DCanvas = forwardRef<Slab3DCanvasHandle, Slab3DCanvasProps>(
 
       const borderEdges = new THREE.EdgesGeometry(acrylicGeo);
       const borderMat = new THREE.LineBasicMaterial({
-        color: 0x67e8f9,
+        color: environment === 'void' ? 0x64748b : 0x94a3b8,
         transparent: true,
-        opacity: 0.45,
+        opacity: environment === 'void' ? 0.4 : 0.35,
       });
       const borderLine = new THREE.LineSegments(borderEdges, borderMat);
       slabGroup.add(borderLine);
@@ -296,11 +297,11 @@ export const Slab3DCanvas = forwardRef<Slab3DCanvasHandle, Slab3DCanvasProps>(
       // Soft pedestal / dais
       const daisGeo = new THREE.CylinderGeometry(1.85, 2.25, 0.22, 48);
       const daisMat = new THREE.MeshStandardMaterial({
-        color: 0x0f172a,
-        roughness: 0.35,
-        metalness: 0.7,
+        color: environment === 'void' ? 0x0f172a : 0xcbd5e1,
+        roughness: environment === 'void' ? 0.35 : 0.45,
+        metalness: environment === 'void' ? 0.7 : 0.35,
         emissive: parseTint(lightTint, 0x244cb4),
-        emissiveIntensity: 0.25,
+        emissiveIntensity: environment === 'void' ? 0.25 : 0.18,
       });
       const daisMesh = new THREE.Mesh(daisGeo, daisMat);
       daisMesh.position.set(0, -2.35, 0);
@@ -309,7 +310,7 @@ export const Slab3DCanvas = forwardRef<Slab3DCanvasHandle, Slab3DCanvasProps>(
 
       const daisRingGeo = new THREE.RingGeometry(1.7, 1.95, 48);
       const daisRingMat = new THREE.MeshBasicMaterial({
-        color: parseTint(lightTint, 0x22d3ee),
+        color: parseTint(lightTint, 0x244cb4),
         side: THREE.DoubleSide,
         transparent: true,
         opacity: 0.55,
@@ -323,11 +324,15 @@ export const Slab3DCanvas = forwardRef<Slab3DCanvasHandle, Slab3DCanvasProps>(
       const ambient = new THREE.AmbientLight(0xffffff, environment === 'void' ? 0.55 : 0.95);
       scene.add(ambient);
 
-      const keyLight = new THREE.PointLight(parseTint(lightTint, 0x22d3ee), 3.2, 18);
+      const keyLight = new THREE.PointLight(parseTint(lightTint, 0x244cb4), 3.2, 18);
       keyLight.position.set(3.2, 3.5, 4.5);
       scene.add(keyLight);
 
-      const fillLight = new THREE.PointLight(0xc084fc, environment === 'nebula' ? 2.8 : 1.6, 14);
+      const fillLight = new THREE.PointLight(
+        environment === 'nebula' ? 0xbe253d : 0xcbd5e1,
+        environment === 'nebula' ? 1.8 : 1.4,
+        14,
+      );
       fillLight.position.set(-3.5, -1.5, 3);
       scene.add(fillLight);
 
@@ -336,13 +341,16 @@ export const Slab3DCanvas = forwardRef<Slab3DCanvasHandle, Slab3DCanvasProps>(
       scene.add(rimLight);
 
       if (environment === 'nebula') {
-        scene.fog = new THREE.FogExp2(0x1a1230, 0.035);
-        const nebulaA = new THREE.PointLight(0xa78bfa, 2.2, 16);
+        // Soft fog matching light gallery (#f7f8fb); brand blue + red wash
+        scene.fog = new THREE.FogExp2(0xf7f8fb, 0.018);
+        const nebulaA = new THREE.PointLight(0x244cb4, 1.6, 16);
         nebulaA.position.set(-4, 2, -2);
         scene.add(nebulaA);
-        const nebulaB = new THREE.PointLight(0x22d3ee, 1.8, 14);
+        const nebulaB = new THREE.PointLight(0xbe253d, 1.2, 14);
         nebulaB.position.set(4, -1, -1);
         scene.add(nebulaB);
+        const galleryFill = new THREE.HemisphereLight(0xffffff, 0xe8eef6, 0.45);
+        scene.add(galleryFill);
       } else if (environment === 'void') {
         scene.fog = new THREE.FogExp2(0x0b1220, 0.028);
       } else {
@@ -563,9 +571,21 @@ export const Slab3DCanvas = forwardRef<Slab3DCanvasHandle, Slab3DCanvasProps>(
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [cardImageUrl, environment, interactive]);
 
+    const isLightStage = environment === 'studio' || environment === 'nebula';
+    const frameClass = isLightStage
+      ? 'border-slate-200 bg-[#e8eef6]'
+      : 'border-slate-800 bg-slate-950';
+    const hudHintClass = isLightStage
+      ? 'border-slate-200 bg-white/90 text-blue-800'
+      : 'border-slate-700/60 bg-slate-900/90 text-slate-200';
+    const hudDotClass = isLightStage ? 'bg-primary' : 'bg-slate-400';
+    const hudHonestyClass = isLightStage
+      ? 'border-amber-200 bg-amber-50/95 text-amber-900'
+      : 'border-amber-500/40 bg-slate-900/90 text-amber-200/95';
+
     return (
       <div
-        className={`relative flex items-center justify-center overflow-hidden rounded-3xl border border-cyan-500/25 bg-slate-950/80 backdrop-blur-md ${className}`}
+        className={`relative flex items-center justify-center overflow-hidden rounded-3xl border ${frameClass} ${className}`}
       >
         <div
           ref={mountRef}
@@ -575,11 +595,15 @@ export const Slab3DCanvas = forwardRef<Slab3DCanvasHandle, Slab3DCanvasProps>(
         />
 
         <div className="pointer-events-none absolute bottom-3 left-3 z-20 flex flex-col gap-1.5">
-          <div className="flex items-center gap-2 rounded-full border border-slate-700/60 bg-slate-900/90 px-2.5 py-1 font-mono text-[10px] text-cyan-300 sm:text-[11px]">
-            <span className="h-2 w-2 animate-pulse rounded-full bg-cyan-400" />
+          <div
+            className={`flex items-center gap-2 rounded-full border px-2.5 py-1 font-mono text-[10px] sm:text-[11px] ${hudHintClass}`}
+          >
+            <span className={`h-2 w-2 rounded-full ${hudDotClass}`} />
             <span>3D VCA SLAB · DRAG TO ROTATE</span>
           </div>
-          <div className="rounded-full border border-amber-500/40 bg-slate-900/90 px-2.5 py-1 font-mono text-[9px] font-bold uppercase tracking-wide text-amber-200/95 sm:text-[10px]">
+          <div
+            className={`rounded-full border px-2.5 py-1 font-mono text-[9px] font-bold uppercase tracking-wide sm:text-[10px] ${hudHonestyClass}`}
+          >
             DIGITAL DISPLAY · NOT A CERTIFICATE
           </div>
         </div>

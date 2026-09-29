@@ -54,7 +54,7 @@ export default function Slab3DViewer({
     <div className={className}>
       <Slab3DCanvas
         ref={canvasRef}
-        className="h-[480px] w-full sm:h-[550px]"
+        className="h-[520px] w-full rounded-3xl sm:h-[600px]"
         cardImageUrl={imageUrl}
         cardName={card.name}
         cardSet={card.set}
@@ -71,7 +71,7 @@ export default function Slab3DViewer({
         autoSpin={config.autoSpin}
         interactive
       />
-      <div className="mt-4 flex items-center gap-2">
+      <div className="mt-3 flex items-center gap-2">
         <Button
           variant="outline"
           size="sm"
@@ -111,7 +111,7 @@ export default function Slab3DViewer({
         </label>
       </div>
       <p className="mt-2 text-center font-mono text-[10px] uppercase tracking-[.16em] text-slate-500">
-        Advanced 3D · WebGL · {Math.round(zoom * 100)}%
+        WebGL stage · {Math.round(zoom * 100)}%
       </p>
     </div>
   );
