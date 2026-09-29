@@ -115,7 +115,12 @@ const indexedCards = new Map<string, CatalogCard>();
 /** Registers confirmed records beyond the bundled catalog for all existing card views. */
 export function registerCards(cards: CatalogCard[]): void { for (const card of cards) indexedCards.set(card.id, card); }
 export function clearIndexedCards(): void { indexedCards.clear(); }
-export const cardById = (id: string): CatalogCard | undefined => indexedCards.get(id) ?? CATALOG.find((c) => c.id === id);
+export const cardById = (id: string): CatalogCard | undefined => {
+  const direct = indexedCards.get(id) ?? CATALOG.find((c) => c.id === id || c.ptcgId === id || c.tcgCardId === id);
+  if (direct) return direct;
+  const base = id.includes(':') ? id.split(':')[0] : id;
+  return indexedCards.get(base) ?? CATALOG.find((c) => c.id === base || c.ptcgId === base || c.tcgCardId === base);
+};
 
 export const USERS: User[] = [
   {

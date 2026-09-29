@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
-import { Box, Gem, Layers, Save } from 'lucide-react';
+import { Box, Gem, Layers, Save, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import HoloSlab, { type SlabConfig } from '@/components/HoloSlab';
+import PeachwebScene from '@/components/PeachwebScene';
 import Slab3DViewer from '@/components/Slab3DViewer';
 import { Button } from '@/components/ui/button';
 import { useVca } from '@/lib/store';
@@ -53,7 +54,8 @@ const LIGHT_ACCENTS = [
   { hex: '#94a3b8', label: 'Silver', css: 'bg-slate-400' },
 ] as const;
 
-type Engine = 'advanced' | 'simple';
+/** advanced = Peachweb (primary), three = @vca/three-slab, simple = CSS HoloSlab */
+type Engine = 'advanced' | 'three' | 'simple';
 
 export default function SlabCreator() {
   const [params] = useSearchParams();
@@ -74,7 +76,7 @@ export default function SlabCreator() {
     initial ? (presets[initial] ?? defaults) : defaults,
   );
   const [record, setRecord] = useState<SlabRecord | null>(null);
-  // Default Advanced 3D; config.simple maps to Simple engine
+  // Default Advanced = Peachweb; config.simple maps to Simple engine
   const [engine, setEngine] = useState<Engine>(config.simple ? 'simple' : 'advanced');
 
   const card = selected ? cardById(selected) : undefined;
@@ -135,7 +137,16 @@ export default function SlabCreator() {
     );
   }
 
-  const useAdvanced = engine === 'advanced' && !config.simple;
+  const usePeachweb = engine === 'advanced';
+  const useThree = engine === 'three';
+  const useSimple = engine === 'simple';
+  const lookControlsApply = useThree || useSimple;
+
+  const engineHint = usePeachweb
+    ? 'Published Peachweb interactive WebGL · marketing experience · NFC REQUIRES_HARDWARE (not live here)'
+    : useThree
+      ? 'WebGL acrylic slab (@vca/three-slab) · animated digital VCA label · DEMO NFC glyph'
+      : 'CSS perspective fallback · low power · no WebGL';
 
   return (
     <div className="space-y-5">
@@ -145,7 +156,8 @@ export default function SlabCreator() {
           Slab studio
         </h1>
         <p className="mt-1.5 text-sm text-muted-foreground">
-          Configure a premium display holder — your card is the hero.
+          Configure a premium display holder — Advanced mode is the Peachweb interactive WebGL
+          experience. Your card is the hero.
         </p>
         <div className="slab-studio-trust mt-3" role="status">
           <span className="font-semibold text-amber-800">DIGITAL DISPLAY</span>
@@ -161,7 +173,9 @@ export default function SlabCreator() {
 
       <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr] lg:items-start">
         <div className="min-h-[520px] sm:min-h-[600px]">
-          {useAdvanced ? (
+          {usePeachweb ? (
+            <PeachwebScene />
+          ) : useThree ? (
             <Slab3DViewer
               card={card}
               grade={certificate?.grade ?? null}
@@ -186,31 +200,36 @@ export default function SlabCreator() {
           {/* Engine */}
           <div className="slab-studio-section">
             <p className="slab-studio-section-title">Render engine</p>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
-                aria-pressed={useAdvanced}
+                aria-pressed={usePeachweb}
                 onClick={() => setEngineMode('advanced')}
-                className={`slab-studio-segment ${useAdvanced ? 'slab-studio-segment-active' : ''}`}
+                className={`slab-studio-segment flex-col gap-1 px-1.5 text-[11px] sm:text-xs ${usePeachweb ? 'slab-studio-segment-active' : ''}`}
               >
-                <Layers className="h-4 w-4" />
-                Advanced 3D
+                <Sparkles className="h-4 w-4 shrink-0" />
+                Peachweb 3D
               </button>
               <button
                 type="button"
-                aria-pressed={!useAdvanced}
-                onClick={() => setEngineMode('simple')}
-                className={`slab-studio-segment ${!useAdvanced ? 'slab-studio-segment-active' : ''}`}
+                aria-pressed={useThree}
+                onClick={() => setEngineMode('three')}
+                className={`slab-studio-segment flex-col gap-1 px-1.5 text-[11px] sm:text-xs ${useThree ? 'slab-studio-segment-active' : ''}`}
               >
-                <Box className="h-4 w-4" />
-                Simple (CSS)
+                <Layers className="h-4 w-4 shrink-0" />
+                Three.js
+              </button>
+              <button
+                type="button"
+                aria-pressed={useSimple}
+                onClick={() => setEngineMode('simple')}
+                className={`slab-studio-segment flex-col gap-1 px-1.5 text-[11px] sm:text-xs ${useSimple ? 'slab-studio-segment-active' : ''}`}
+              >
+                <Box className="h-4 w-4 shrink-0" />
+                Simple
               </button>
             </div>
-            <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-              {useAdvanced
-                ? 'WebGL acrylic slab · animated digital VCA label · DEMO NFC glyph'
-                : 'CSS perspective fallback · low power · no WebGL'}
-            </p>
+            <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">{engineHint}</p>
           </div>
 
           {/* Card + grade honesty */}
@@ -248,8 +267,20 @@ export default function SlabCreator() {
             </div>
           </div>
 
-          {/* Label finish swatches */}
-          <div className="slab-studio-section">
+          {usePeachweb && (
+            <div className="slab-studio-section">
+              <p className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-[11px] leading-relaxed text-muted-foreground">
+                Look controls apply to Three.js / Simple displays. Peachweb is the published
+                interactive scene.
+              </p>
+            </div>
+          )}
+
+          {/* Label finish swatches — apply to Three.js / Simple */}
+          <div
+            className={`slab-studio-section ${usePeachweb ? 'pointer-events-none opacity-40' : ''}`}
+            aria-disabled={usePeachweb || undefined}
+          >
             <p className="slab-studio-section-title">Label finish</p>
             <div className="mt-2 grid grid-cols-3 gap-2">
               {LABEL_FINISHES.map((f) => {
@@ -260,6 +291,7 @@ export default function SlabCreator() {
                     type="button"
                     aria-pressed={active}
                     aria-label={`${f.name} label finish`}
+                    disabled={usePeachweb}
                     onClick={() => update('labelStyle', f.value)}
                     className={`slab-studio-swatch ${active ? 'slab-studio-swatch-active' : ''}`}
                   >
@@ -277,7 +309,10 @@ export default function SlabCreator() {
           </div>
 
           {/* Environment tiles */}
-          <div className="slab-studio-section">
+          <div
+            className={`slab-studio-section ${usePeachweb ? 'pointer-events-none opacity-40' : ''}`}
+            aria-disabled={usePeachweb || undefined}
+          >
             <p className="slab-studio-section-title">Studio environment</p>
             <div className="mt-2 grid grid-cols-3 gap-2">
               {ENVIRONMENTS.map((env) => {
@@ -288,6 +323,7 @@ export default function SlabCreator() {
                     type="button"
                     aria-pressed={active}
                     aria-label={`${env.name} environment`}
+                    disabled={usePeachweb}
                     onClick={() => update('environment', env.value)}
                     className={`slab-studio-env ${active ? 'slab-studio-env-active' : ''}`}
                   >
@@ -304,7 +340,10 @@ export default function SlabCreator() {
           </div>
 
           {/* Look: foil + card position */}
-          <div className="slab-studio-section">
+          <div
+            className={`slab-studio-section ${usePeachweb ? 'pointer-events-none opacity-40' : ''}`}
+            aria-disabled={usePeachweb || undefined}
+          >
             <p className="slab-studio-section-title">Look</p>
             <label className="mt-2 block text-sm font-medium">
               <span className="flex items-center justify-between">
@@ -319,6 +358,7 @@ export default function SlabCreator() {
                 min={0}
                 max={100}
                 value={config.holo}
+                disabled={usePeachweb}
                 onChange={(e) => update('holo', Number(e.target.value))}
                 className="mt-2.5 w-full accent-blue-700"
               />
@@ -336,6 +376,7 @@ export default function SlabCreator() {
                 min={-5}
                 max={5}
                 value={config.cardOffset}
+                disabled={usePeachweb}
                 onChange={(e) => update('cardOffset', Number(e.target.value))}
                 className="mt-2.5 w-full accent-blue-700"
               />
@@ -343,7 +384,10 @@ export default function SlabCreator() {
           </div>
 
           {/* Light accent */}
-          <div className="slab-studio-section">
+          <div
+            className={`slab-studio-section ${usePeachweb ? 'pointer-events-none opacity-40' : ''}`}
+            aria-disabled={usePeachweb || undefined}
+          >
             <p className="slab-studio-section-title">Light accent</p>
             <div className="mt-2 flex gap-2.5">
               {LIGHT_ACCENTS.map((c) => {
@@ -354,6 +398,7 @@ export default function SlabCreator() {
                     type="button"
                     aria-label={`${c.label} light`}
                     aria-pressed={active}
+                    disabled={usePeachweb}
                     onClick={() => update('lightTint', c.hex)}
                     className={`h-11 w-11 rounded-full border-2 transition duration-120 ${c.css} ${
                       active
@@ -366,22 +411,38 @@ export default function SlabCreator() {
             </div>
           </div>
 
-          {/* Toggles */}
+          {/* Toggles — autoSpin/showGrade apply to Three.js / Simple; simple toggle switches engine */}
           <div className="slab-studio-section !border-b-0 pb-2">
             <p className="slab-studio-section-title mb-1">Options</p>
             {(
               [
-                { key: 'autoSpin' as const, label: 'Slow auto-rotation' },
-                { key: 'showGrade' as const, label: 'Show grade status' },
-                { key: 'simple' as const, label: 'Simple display (low power)' },
+                {
+                  key: 'autoSpin' as const,
+                  label: 'Slow auto-rotation',
+                  disabled: !lookControlsApply,
+                },
+                {
+                  key: 'showGrade' as const,
+                  label: 'Show grade status',
+                  disabled: !lookControlsApply,
+                },
+                {
+                  key: 'simple' as const,
+                  label: 'Simple display (low power)',
+                  disabled: false,
+                },
               ] as const
             ).map((c) => (
-              <label key={c.key} className="slab-studio-toggle">
+              <label
+                key={c.key}
+                className={`slab-studio-toggle ${c.disabled ? 'pointer-events-none opacity-40' : ''}`}
+              >
                 <span>{c.label}</span>
                 <input
                   type="checkbox"
                   className="h-4 w-4 accent-blue-700"
                   checked={Boolean(config[c.key])}
+                  disabled={c.disabled}
                   onChange={(e) => update(c.key, e.target.checked)}
                 />
               </label>

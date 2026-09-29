@@ -11,6 +11,13 @@ export default defineConfig(({ mode }) => ({
     hmr: {
       overlay: false,
     },
+    proxy: {
+      '/proxy-img': {
+        target: 'https://images.pokemontcg.io',
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/proxy-img/, ''),
+      },
+    },
   },
   plugins: [react()],
   resolve: {

@@ -48,7 +48,8 @@ export default function Slab3DViewer({
   const canvasRef = useRef<Slab3DCanvasHandle>(null);
   const [zoom, setZoom] = useState(1);
   const mapped = mapGrade(grade);
-  const imageUrl = frontPhoto || card.artUrl;
+  const rawUrl = frontPhoto || card.artUrl;
+  const imageUrl = rawUrl ? rawUrl.replace('https://images.pokemontcg.io/', '/proxy-img/') : undefined;
 
   return (
     <div className={className}>
