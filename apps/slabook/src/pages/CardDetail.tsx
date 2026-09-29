@@ -4,6 +4,8 @@ import { ArrowLeft, BadgeCheck, Gem, Layers, MessageSquareShare, ScanLine, Shiel
 
 import CardArt from "@/components/CardArt";
 import PhotoInspection from '@/components/PhotoInspection';
+import PokemonIdentityPanel from '@/components/PokemonIdentityPanel';
+import AiInspectionPanel from '@/components/AiInspectionPanel';
 import { toast } from 'sonner';
 import GradeRoiPanel from "@/components/GradeRoiPanel";
 import PostCard from "@/components/PostCard";
@@ -165,6 +167,10 @@ export default function CardDetail() {
           )}
         </div>
       </div>
+
+      <PokemonIdentityPanel card={card} />
+
+      <AiInspectionPanel card={card} />
 
       <PhotoInspection key={card.id} card={card} />
 

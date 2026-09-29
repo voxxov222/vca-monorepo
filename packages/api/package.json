@@ -22,7 +22,10 @@
     "@vca/config": "*",
     "express": "^4.21.2",
     "dotenv": "^17.2.3",
-    "cors": "^2.8.5"
+    "cors": "^2.8.5",
+    "@vca/pricing": "*",
+    "@vca/catalog": "*",
+    "@vca/ai": "*"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",

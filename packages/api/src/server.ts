@@ -6,6 +6,7 @@ import { VCA_BRAND } from "@vca/config";
 import { registerVerificationRoutes } from "./verificationRoutes.js";
 import { registerProductionRoutes } from "./productionRoutes.js";
 import { registerVscanMarketRoutes } from "./vscanMarketRoutes.js";
+import { registerCatalogRoutes } from "./catalogRoutes.js";
 
 const app = express();
 const port = Number(process.env.PORT || 3001);
@@ -25,6 +26,7 @@ app.get("/health", async (_req, res) => {
 registerProductionRoutes(app);
 registerVerificationRoutes(app);
 registerVscanMarketRoutes(app);
+registerCatalogRoutes(app);
 
 app.listen(port, () => {
   console.log(`[${VCA_BRAND.short} API] listening on :${port}`);
