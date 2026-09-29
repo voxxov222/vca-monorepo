@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { Express, NextFunction, Request, Response } from 'express';
 import { prisma } from '@vca/db';
+import { issueDigitalSerial } from './serialPolicy.js';
 
 const SESSION_COOKIE = 'vca_session';
 
@@ -48,10 +49,6 @@ async function requireStaff(req: AuthenticatedRequest, res: Response, next: Next
 
 async function audit(actorId: string, action: string, entityType: string, entityId: string, metadata?: unknown): Promise<void> {
   await prisma.auditLog.create({ data: { actorId, action, entityType, entityId, metadata: metadata as object | undefined } });
-}
-
-function certificateNumber(): string {
-  return `VCA-${new Date().getUTCFullYear()}-${randomBytes(5).toString('hex').toUpperCase()}`;
 }
 
 function verificationHash(serial: string, grade: number): string {
@@ -104,7 +101,11 @@ export function registerGradingRoutes(app: Express): void {
 
   app.post('/api/grading/:submissionId/finalize', requireStaff, async (req: AuthenticatedRequest, res, next) => {
     try {
-      const report = await prisma.gradingReport.findFirst({ where: { submissionId: req.params.submissionId }, orderBy: { createdAt: 'desc' } });
+      const report = await prisma.gradingReport.findFirst({
+        where: { submissionId: req.params.submissionId },
+        orderBy: { createdAt: 'desc' },
+        include: { certificate: true },
+      });
       if (!report) return res.status(404).json({ success: false, error: 'GRADING_REPORT_NOT_FOUND' });
       if (report.finalizedAt || report.certificate) return res.status(409).json({ success: false, error: 'GRADING_ALREADY_FINALIZED' });
 
@@ -113,25 +114,57 @@ export function registerGradingRoutes(app: Express): void {
         return res.status(400).json({ success: false, error: 'INVALID_FINAL_GRADE', message: 'Final grade must be between 1 and 10.' });
       }
 
+      // Client-supplied serials are never accepted — issuance is server-only (digital policy).
       const result = await prisma.$transaction(async tx => {
         const finalizedAt = new Date();
         const updatedReport = await tx.gradingReport.update({ where: { id: report.id }, data: { humanGrade: grade, finalizedAt } });
-        let serial = certificateNumber();
+
+        let serial = issueDigitalSerial();
         let certificateNo = serial;
-        for (let attempt = 0; attempt < 5; attempt++) {
+        for (let attempt = 0; attempt < 8; attempt++) {
           const existing = await tx.certificate.findFirst({ where: { OR: [{ serialNo: serial }, { certificateNo }] } });
           if (!existing) break;
-          serial = certificateNumber();
+          serial = issueDigitalSerial();
           certificateNo = serial;
         }
-        const certificate = await tx.certificate.create({ data: { gradingReportId: updatedReport.id, certificateNo, serialNo: serial, status: 'CERTIFIED', finalGrade: grade, graderId: req.userId!, certifiedAt: finalizedAt, verificationHash: verificationHash(serial, grade) } });
+
+        const certificate = await tx.certificate.create({
+          data: {
+            gradingReportId: updatedReport.id,
+            certificateNo,
+            serialNo: serial,
+            status: 'CERTIFIED',
+            finalGrade: grade,
+            graderId: req.userId!,
+            certifiedAt: finalizedAt,
+            verificationHash: verificationHash(serial, grade),
+          },
+        });
+
+        // Ensure an ASSEMBLY slab exists so NFC bind can proceed later.
+        let slab = await tx.slab.findUnique({ where: { certificateId: certificate.id } });
+        if (!slab) {
+          slab = await tx.slab.create({
+            data: { certificateId: certificate.id, status: 'ASSEMBLY', model: 'VCA-DIGITAL-1' },
+          });
+          await tx.auditLog.create({
+            data: {
+              actorId: req.userId!,
+              action: 'SLAB_CREATED',
+              entityType: 'Slab',
+              entityId: slab.id,
+              metadata: { certificateId: certificate.id, status: 'ASSEMBLY' },
+            },
+          });
+        }
+
         await tx.submission.update({ where: { id: req.params.submissionId }, data: { status: 'CERTIFIED' } });
         await tx.auditLog.create({ data: { actorId: req.userId!, action: 'GRADE_FINALIZED', entityType: 'GradingReport', entityId: updatedReport.id, metadata: { finalGrade: grade, methodologyVersion: updatedReport.methodologyVersion } } });
-        await tx.auditLog.create({ data: { actorId: req.userId!, action: 'CERTIFICATE_ISSUED', entityType: 'Certificate', entityId: certificate.id, metadata: { serialNo: certificate.serialNo, certificateNo: certificate.certificateNo } } });
-        return { updatedReport, certificate };
+        await tx.auditLog.create({ data: { actorId: req.userId!, action: 'CERTIFICATE_ISSUED', entityType: 'Certificate', entityId: certificate.id, metadata: { serialNo: certificate.serialNo, certificateNo: certificate.certificateNo, kind: 'digital' } } });
+        return { updatedReport, certificate, slab };
       });
 
-      res.status(201).json({ success: true, gradingReport: result.updatedReport, certificate: result.certificate });
+      res.status(201).json({ success: true, gradingReport: result.updatedReport, certificate: result.certificate, slab: result.slab });
     } catch (error) { next(error); }
   });
 }
