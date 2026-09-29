@@ -1,0 +1,26 @@
+{
+  "name": "vca",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Verified Card Authority — canonical monorepo",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:slabook": "npm run dev -w @vca/slabook",
+    "dev:api": "npm run dev -w @vca/api",
+    "build": "npm run build -w @vca/db && npm run build -ws --if-present",
+    "build:slabook": "npm run build -w @vca/slabook",
+    "build:api": "npm run build -w @vca/api",
+    "db:generate": "npm run generate -w @vca/db",
+    "db:migrate": "npm run migrate -w @vca/db",
+    "lint": "npm run lint -ws --if-present",
+    "typecheck": "npm run typecheck -ws --if-present",
+    "test": "npm run test -ws --if-present"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "npm@9.2.0"
+}

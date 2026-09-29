@@ -1,0 +1,224 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DISABLED
+}
+
+enum UserRole {
+  CUSTOMER
+  GRADER
+  ADMIN
+}
+
+enum CertificateStatus {
+  PENDING
+  IN_REVIEW
+  CERTIFIED
+  VERIFIED
+  SUSPENDED
+  REVOKED
+}
+
+enum SubmissionStatus {
+  DRAFT
+  RECEIVED
+  IN_REVIEW
+  GRADING
+  AWAITING_APPROVAL
+  CERTIFIED
+  RETURNED
+  CANCELLED
+}
+
+enum SlabStatus {
+  ASSEMBLY
+  ACTIVE
+  SUSPENDED
+  RETIRED
+}
+
+enum VerificationSecurityLevel {
+  IDENTIFIER_ONLY
+  CRYPTOGRAPHIC
+}
+
+enum TamperStatus {
+  UNKNOWN
+  CLEAR
+  SUSPECTED
+  TAMPERED
+}
+
+model User {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  passwordHash String
+  displayName  String?
+  role         UserRole      @default(CUSTOMER)
+  status       UserStatus    @default(ACTIVE)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  sessions     Session[]
+  submissions  Submission[]
+  auditLogs    AuditLog[]
+  certificates Certificate[] @relation("CertificateGrader")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model CardSet {
+  id        String   @id @default(cuid())
+  name      String
+  brand     String   @default("Pokemon")
+  year      Int?
+  createdAt DateTime @default(now())
+  cards     Card[]
+
+  @@unique([brand, name, year])
+}
+
+model Card {
+  id          String       @id @default(cuid())
+  setId       String
+  name        String
+  collectorNo String?
+  variant     String?
+  language    String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  set         CardSet      @relation(fields: [setId], references: [id])
+  submissions Submission[]
+
+  @@index([name])
+  @@index([setId, collectorNo])
+}
+
+model Submission {
+  id             String           @id @default(cuid())
+  userId         String
+  cardId         String?
+  status         SubmissionStatus @default(DRAFT)
+  submittedAt    DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  user           User             @relation(fields: [userId], references: [id])
+  card           Card?            @relation(fields: [cardId], references: [id])
+  gradingReports GradingReport[]
+
+  @@index([userId, status])
+}
+
+model GradingReport {
+  id                 String       @id @default(cuid())
+  submissionId       String
+  methodologyVersion String
+  centering          Decimal?     @db.Decimal(4, 2)
+  corners            Decimal?     @db.Decimal(4, 2)
+  edges              Decimal?     @db.Decimal(4, 2)
+  surface            Decimal?     @db.Decimal(4, 2)
+  printQuality       Decimal?     @db.Decimal(4, 2)
+  whitening          Decimal?     @db.Decimal(4, 2)
+  defects            Json?
+  proposedGrade      Decimal?     @db.Decimal(3, 1)
+  humanGrade         Decimal?     @db.Decimal(3, 1)
+  finalizedAt        DateTime?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  submission         Submission   @relation(fields: [submissionId], references: [id])
+  certificate        Certificate?
+
+  @@index([submissionId, createdAt])
+}
+
+model Certificate {
+  id               String            @id @default(cuid())
+  gradingReportId  String            @unique
+  certificateNo    String            @unique
+  serialNo         String            @unique
+  status           CertificateStatus @default(PENDING)
+  finalGrade       Decimal?          @db.Decimal(3, 1)
+  graderId         String?
+  verificationHash String?           @unique
+  certifiedAt      DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  gradingReport    GradingReport     @relation(fields: [gradingReportId], references: [id])
+  grader           User?             @relation("CertificateGrader", fields: [graderId], references: [id])
+  slab             Slab?
+  nfcRecord        NFCRecord?
+  qrRecord         QRRecord?
+
+  @@index([status])
+}
+
+model Slab {
+  id            String      @id @default(cuid())
+  certificateId String      @unique
+  status        SlabStatus  @default(ASSEMBLY)
+  model         String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  certificate   Certificate @relation(fields: [certificateId], references: [id])
+  nfcRecord     NFCRecord?
+}
+
+model NFCRecord {
+  id             String                    @id @default(cuid())
+  certificateId  String                    @unique
+  identifier     String                    @unique
+  securityLevel  VerificationSecurityLevel @default(IDENTIFIER_ONLY)
+  tamperStatus   TamperStatus              @default(UNKNOWN)
+  lastVerifiedAt DateTime?
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+  certificate    Certificate               @relation(fields: [certificateId], references: [id])
+  slab           Slab?                     @relation(fields: [slabId], references: [id])
+  slabId         String?                   @unique
+
+  @@index([certificateId, securityLevel])
+}
+
+model QRRecord {
+  id             String      @id @default(cuid())
+  certificateId  String      @unique
+  publicToken    String      @unique
+  active         Boolean     @default(true)
+  scanCount      Int         @default(0)
+  lastVerifiedAt DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  certificate    Certificate @relation(fields: [certificateId], references: [id])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  actor      User?    @relation(fields: [actorId], references: [id])
+
+  @@index([entityType, entityId, createdAt])
+  @@index([actorId, createdAt])
+}

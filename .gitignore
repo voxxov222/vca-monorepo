@@ -1,0 +1,14 @@
+node_modules
+dist
+build
+.turbo
+.next
+.cache
+*.log
+.env
+.env.*
+!.env.example
+coverage
+.DS_Store
+*.tsbuildinfo
+apps/slabook/bun.lock
