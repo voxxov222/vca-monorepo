@@ -12,3 +12,5 @@ coverage
 .DS_Store
 *.tsbuildinfo
 apps/slabook/bun.lock
+
+.agents/
