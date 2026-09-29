@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from 'express';
-import { getVscanMarketData } from '../services/vscanMarketService';
+import { getVscanMarketData } from './services/vscanMarketService';
 
 export function registerVscanMarketRoutes(app: Express): void {
   app.get('/api/vscan/market', async (req: Request, res: Response) => {
