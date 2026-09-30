@@ -12,3 +12,4 @@ export {
   isValidVcaSerial,
   yearSuffix,
 } from "./serialPolicy.js";
+export { mapCertificateVerificationStatus, shouldAuditVerification } from "./verificationStatus.js";

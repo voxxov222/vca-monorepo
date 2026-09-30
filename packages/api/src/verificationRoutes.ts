@@ -1,6 +1,9 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { Express, NextFunction, Request, Response } from 'express';
 import { prisma } from '@vca/db';
+import { createPublicRateLimit } from './publicRateLimit.js';
+import { isValidVcaSerial } from './serialPolicy.js';
+import { mapCertificateVerificationStatus, shouldAuditVerification } from './verificationStatus.js';
 
 const SESSION_COOKIE = 'vca_session';
 type AuthenticatedRequest = Request & { userId?: string; userRole?: string };
@@ -8,7 +11,15 @@ type AuthenticatedRequest = Request & { userId?: string; userRole?: string };
 function hashToken(token: string): string { return createHash('sha256').update(token).digest('hex'); }
 function parseCookies(header?: string): Record<string, string> {
   if (!header) return {};
-  return Object.fromEntries(header.split(';').map(part => { const index = part.indexOf('='); if (index < 0) return [part.trim(), '']; return [part.slice(0, index).trim(), decodeURIComponent(part.slice(index + 1).trim())]; }));
+  return Object.fromEntries(header.split(';').map(part => {
+    const index = part.indexOf('=');
+    if (index < 0) return [part.trim(), ''];
+    const raw = part.slice(index + 1).trim();
+    // Cookie values may contain bare %; never let decode throw into auth middleware.
+    let value = raw;
+    try { value = decodeURIComponent(raw); } catch { value = raw; }
+    return [part.slice(0, index).trim(), value];
+  }));
 }
 async function requireStaff(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -46,12 +57,17 @@ function publicCertificate(certificate: any) {
   };
 }
 
-function mapCertificateVerificationStatus(status: string): string {
-  if (status === 'REVOKED') return 'REVOKED';
-  if (status === 'SUSPENDED') return 'SUSPENDED';
-  if (status === 'CERTIFIED' || status === 'VERIFIED') return 'AUTHENTIC_RECORD';
-  return 'STATUS_UNAVAILABLE';
+
+/**
+ * Express already URI-decodes route params. Do not call decodeURIComponent again
+ * (double-decode throws URIError → 500 on inputs like bare `%`).
+ */
+function readSerialParam(raw: unknown): string {
+  return String(raw ?? '').trim();
 }
+
+// Public verify endpoints: ~30 req/min/IP. Serial keyspace is guessable; bound probes + audit writes.
+const publicVerifyRateLimit = createPublicRateLimit({ windowMs: 60_000, max: 30, errorCode: 'VERIFY_RATE_LIMITED' });
 
 export function registerVerificationRoutes(app: Express): void {
   app.post('/api/certificates/:serial/qr', requireStaff, async (req: AuthenticatedRequest, res, next) => {
@@ -68,7 +84,7 @@ export function registerVerificationRoutes(app: Express): void {
     } catch (error) { next(error); }
   });
 
-  app.get('/api/verify/qr/:token', async (req, res, next) => {
+  app.get('/api/verify/qr/:token', publicVerifyRateLimit, async (req, res, next) => {
     try {
       const record = await prisma.qRRecord.findUnique({
         where: { publicToken: req.params.token },
@@ -76,25 +92,35 @@ export function registerVerificationRoutes(app: Express): void {
       });
       if (!record || !record.active) { res.status(404).json({ success: false, verificationStatus: 'NOT_FOUND' }); return; }
       await prisma.qRRecord.update({ where: { id: record.id }, data: { scanCount: { increment: 1 }, lastVerifiedAt: new Date() } });
-      await audit(null, 'QR_VERIFICATION', 'Certificate', record.certificateId, { qrRecordId: record.id });
       const certificate = record.certificate;
       const verificationStatus = mapCertificateVerificationStatus(certificate.status);
+      if (shouldAuditVerification(verificationStatus)) {
+        await audit(null, 'QR_VERIFICATION', 'Certificate', record.certificateId, { qrRecordId: record.id, verificationStatus });
+      }
       res.json({ success: true, verificationStatus, certificate: publicCertificate(certificate), verifiedAt: new Date().toISOString() });
     } catch (error) { next(error); }
   });
 
   /** Same public shape as QR verify — preferred by Slabook `/verify/:serial`. */
-  app.get('/api/verify/serial/:serial', async (req, res, next) => {
+  app.get('/api/verify/serial/:serial', publicVerifyRateLimit, async (req, res, next) => {
     try {
-      const serial = String(req.params.serial || '').trim();
+      const serial = readSerialParam(req.params.serial);
       if (!serial) { res.status(400).json({ success: false, verificationStatus: 'NOT_FOUND', error: 'SERIAL_REQUIRED' }); return; }
+      // Reject non-canonical formats before DB — shrinks enumerable probe surface.
+      if (!isValidVcaSerial(serial)) {
+        res.status(400).json({ success: false, verificationStatus: 'NOT_FOUND', error: 'SERIAL_INVALID' });
+        return;
+      }
       const certificate = await prisma.certificate.findUnique({
         where: { serialNo: serial },
         include: certificatePublicInclude,
       });
       if (!certificate) { res.status(404).json({ success: false, verificationStatus: 'NOT_FOUND' }); return; }
-      await audit(null, 'SERIAL_VERIFICATION', 'Certificate', certificate.id, { serialNo: serial });
       const verificationStatus = mapCertificateVerificationStatus(certificate.status);
+      // Gate audit: skip pending/unknown (STATUS_UNAVAILABLE) so probes don't flood audit_log.
+      if (shouldAuditVerification(verificationStatus)) {
+        await audit(null, 'SERIAL_VERIFICATION', 'Certificate', certificate.id, { serialNo: serial, verificationStatus });
+      }
       res.json({ success: true, verificationStatus, certificate: publicCertificate(certificate), verifiedAt: new Date().toISOString() });
     } catch (error) { next(error); }
   });
@@ -118,7 +144,7 @@ export function registerVerificationRoutes(app: Express): void {
     } catch (error) { next(error); }
   });
 
-  app.get('/api/nfc/verify/:identifier', async (req, res, next) => {
+  app.get('/api/nfc/verify/:identifier', publicVerifyRateLimit, async (req, res, next) => {
     try {
       const record = await prisma.nFCRecord.findUnique({
         where: { identifier: req.params.identifier },
@@ -127,9 +153,10 @@ export function registerVerificationRoutes(app: Express): void {
       if (!record) { res.status(404).json({ success: false, verificationStatus: 'NFC_IDENTIFIER_NOT_REGISTERED' }); return; }
       const verifiedAt = new Date();
       await prisma.nFCRecord.update({ where: { id: record.id }, data: { lastVerifiedAt: verifiedAt } });
-      await audit(null, 'NFC_VERIFICATION', 'NFCRecord', record.id, { securityLevel: record.securityLevel });
       const certStatus = record.certificate.status;
       const verificationStatus = certStatus === 'REVOKED' ? 'REVOKED' : certStatus === 'SUSPENDED' ? 'SUSPENDED' : record.securityLevel === 'CRYPTOGRAPHIC' ? 'REGISTERED_CRYPTOGRAPHIC' : 'IDENTIFIER_MATCH_ONLY';
+      // NFC outcomes above are all meaningful; still audit (rate-limited at edge).
+      await audit(null, 'NFC_VERIFICATION', 'NFCRecord', record.id, { securityLevel: record.securityLevel, verificationStatus });
       res.json({ success: true, verificationStatus, certificate: publicCertificate(record.certificate), nfc: { securityLevel: record.securityLevel, tamperStatus: record.tamperStatus, lastVerifiedAt: verifiedAt.toISOString() } });
     } catch (error) { next(error); }
   });
