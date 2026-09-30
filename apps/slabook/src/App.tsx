@@ -23,6 +23,7 @@ import SlabCreator from "./pages/SlabCreator";
 import Slabook from "./pages/Slabook";
 import Submit from "./pages/Submit";
 import Profile from "./pages/Profile";
+import { VerifyQrPage, VerifySerialPage } from "./pages/Verify";
 
 const queryClient = new QueryClient();
 
@@ -36,6 +37,9 @@ const App = () => (
             {/* Splash lives outside the app shell — full-bleed prototype experience. */}
             <Route path="/" element={<Splash />} />
             <Route path="/splash" element={<Splash />} />
+            {/* Public verify — no workspace/auth gate; 2D-first honesty UI. */}
+            <Route path="/verify/qr/:token" element={<VerifyQrPage />} />
+            <Route path="/verify/:serial" element={<VerifySerialPage />} />
             <Route element={<AppShell />}>
               <Route path="/home" element={<Index />} />
               <Route path="/account" element={<Account />} />

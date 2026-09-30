@@ -31,6 +31,16 @@ npm run dev:slabook    # Vite Slabook UI
 - `npm run db:generate` / `db:migrate` — Prisma
 - `npm run build` — build packages then workspaces
 
+## Public verify
+
+With API on `:3001` and Slabook on `:5173`:
+
+- UI: `http://localhost:5173/verify/VCA-D-26-000001` and `/verify/qr/:token`
+- API: `GET /api/verify/serial/:serial`, `GET /api/verify/qr/:token`, `GET /api/certificates/:serial`
+- Set `VITE_VCA_API_URL` (Slabook → API) and `PUBLIC_VERIFY_URL` (QR link base → Slabook origin)
+
+Digital certificates issued on grading finalize use serials `VCA-D-YY-####` and create an `ASSEMBLY` slab.
+
 ## Rules
 
 1. Do not invent API results, prices, NFC, or certificates.
