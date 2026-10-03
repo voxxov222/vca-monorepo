@@ -7,6 +7,7 @@ import { registerVerificationRoutes } from "./verificationRoutes.js";
 import { registerProductionRoutes } from "./productionRoutes.js";
 import { registerVscanMarketRoutes } from "./vscanMarketRoutes.js";
 import { registerCatalogRoutes } from "./catalogRoutes.js";
+import { registerCardIntelligenceRoutes } from "./cardIntelligenceRoutes.js";
 
 const app = express();
 const port = Number(process.env.PORT || 3001);
@@ -27,6 +28,7 @@ registerProductionRoutes(app);
 registerVerificationRoutes(app);
 registerVscanMarketRoutes(app);
 registerCatalogRoutes(app);
+registerCardIntelligenceRoutes(app);
 
 app.listen(port, () => {
   console.log(`[${VCA_BRAND.short} API] listening on :${port}`);

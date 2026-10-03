@@ -68,6 +68,10 @@ model User {
   submissions  Submission[]
   auditLogs    AuditLog[]
   certificates Certificate[] @relation("CertificateGrader")
+  inspectionSessions InspectionSession[] @relation("InspectionInspector")
+  authoredEvidence InspectionEvidence[] @relation("EvidenceAuthor")
+  gradeProposals InspectionGradeProposal[] @relation("GradeProposalAuthor")
+  reviewedCardUpdates CardUpdateQueueItem[] @relation("CardUpdateReviewer")
 }
 
 model Session {
@@ -86,7 +90,8 @@ model CardSet {
   brand     String   @default("Pokemon")
   year      Int?
   createdAt DateTime @default(now())
-  cards     Card[]
+  cards       Card[]
+  cardMasters CardMaster[]
   @@unique([brand, name, year])
 }
 
@@ -101,6 +106,7 @@ model Card {
   updatedAt    DateTime     @updatedAt
   set          CardSet      @relation(fields: [setId], references: [id])
   submissions  Submission[]
+  cardMaster   CardMaster?
   @@index([name])
   @@index([setId, collectorNo])
 }
@@ -115,7 +121,8 @@ model Submission {
   updatedAt      DateTime         @updatedAt
   user           User             @relation(fields: [userId], references: [id])
   card           Card?            @relation(fields: [cardId], references: [id])
-  gradingReports GradingReport[]
+  gradingReports     GradingReport[]
+  inspectionSessions InspectionSession[]
   @@index([userId, status])
 }
 
@@ -155,8 +162,9 @@ model Certificate {
   gradingReport    GradingReport     @relation(fields: [gradingReportId], references: [id])
   grader           User?             @relation("CertificateGrader", fields: [graderId], references: [id])
   slab             Slab?
-  nfcRecord        NFCRecord?
-  qrRecord         QRRecord?
+  nfcRecord          NFCRecord?
+  qrRecord           QRRecord?
+  inspectionSessions InspectionSession[]
   @@index([status])
 }
 
@@ -167,8 +175,9 @@ model Slab {
   model         String?
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
-  certificate   Certificate @relation(fields: [certificateId], references: [id])
-  nfcRecord     NFCRecord?
+  certificate        Certificate @relation(fields: [certificateId], references: [id])
+  nfcRecord          NFCRecord?
+  inspectionSessions InspectionSession[]
 }
 
 model NFCRecord {
@@ -181,8 +190,9 @@ model NFCRecord {
   createdAt      DateTime                  @default(now())
   updatedAt      DateTime                  @updatedAt
   certificate    Certificate               @relation(fields: [certificateId], references: [id])
-  slab           Slab?                     @relation(fields: [slabId], references: [id])
-  slabId         String?                   @unique
+  slab               Slab?                     @relation(fields: [slabId], references: [id])
+  slabId             String?                   @unique
+  inspectionSessions InspectionSession[]
   @@index([certificateId, securityLevel])
 }
 
@@ -209,4 +219,236 @@ model AuditLog {
   actor      User?    @relation(fields: [actorId], references: [id])
   @@index([entityType, entityId, createdAt])
   @@index([actorId, createdAt])
+}
+
+
+// --- Card intelligence foundation (not a catalog ingest) ---
+// Null string/number fields mean UNKNOWN. Do not default rarity, finish, or grades.
+// vcaCardId is a catalog key, never a certificate serial (those stay on Certificate.serialNo).
+// NFC hooks reference NFCRecord only. This schema stores no NFC keys, signatures, or crypto.
+
+enum CardUpdateQueueState {
+  NEW
+  AUTO_VERIFIED
+  NEEDS_REVIEW
+  APPROVED
+  PUBLISHED
+}
+
+/// Assistive authenticity disposition. There is intentionally no CERTAIN value.
+enum AuthenticityDisposition {
+  INDICATORS
+  POTENTIAL_CONCERNS
+  REQUIRES_HUMAN_REVIEW
+}
+
+enum InspectionCategoryKind {
+  CENTERING
+  CORNERS
+  EDGES
+  SURFACE
+  PRINT_QUALITY
+}
+
+enum InspectionEvidenceKind {
+  ORIGINAL_PHOTO
+  MEASUREMENT
+  MARKER
+  NOTE
+  REFERENCE_COMPARISON
+  ENHANCEMENT
+}
+
+model CardMaster {
+  id                  String   @id @default(cuid())
+  /// Assigned by a future policy. Null until then — never fabricate, never copy a slab serial.
+  vcaCardId           String?  @unique
+  name                String?
+  setName             String?
+  cardSetId           String?
+  collectorNumber     String?
+  language            String?
+  rarity              String?
+  variant             String?
+  finish              String?
+  /// Map of field name -> { source, retrievedAt, mode, note }. Missing key = provenance UNKNOWN.
+  fieldProvenance     Json?
+  /// Optional bridge to the existing trust Card row. Not a second serial.
+  legacyCardId        String?  @unique
+  /// Pointer to the current published snapshot. Older CardMasterRevision rows stay.
+  publishedRevisionId String?  @unique
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  cardSet             CardSet?              @relation(fields: [cardSetId], references: [id], onDelete: SetNull)
+  legacyCard          Card?                 @relation(fields: [legacyCardId], references: [id], onDelete: SetNull)
+  publishedRevision   CardMasterRevision?   @relation("CardMasterPublished", fields: [publishedRevisionId], references: [id], onDelete: SetNull)
+  revisions           CardMasterRevision[]  @relation("CardMasterHistory")
+  images              CardMasterImage[]
+  queueItems          CardUpdateQueueItem[]
+  inspectionSessions  InspectionSession[]
+
+  @@index([name])
+  @@index([setName, collectorNumber])
+}
+
+model CardMasterImage {
+  id           String    @id @default(cuid())
+  cardMasterId String
+  url          String
+  /// front | back | other — null if the role was not supplied
+  role         String?
+  sourceLabel  String?
+  retrievedAt  DateTime?
+  provenance   Json?
+  createdAt    DateTime  @default(now())
+  cardMaster   CardMaster @relation(fields: [cardMasterId], references: [id], onDelete: Restrict)
+
+  @@index([cardMasterId])
+}
+
+/// Append-only snapshot. No updatedAt — publishing inserts a new version.
+model CardMasterRevision {
+  id           String   @id @default(cuid())
+  cardMasterId String
+  version      Int
+  snapshot     Json
+  sourceLabel  String?
+  provenance   Json?
+  createdAt    DateTime @default(now())
+  createdById  String?
+  queueItemId  String?  @unique
+
+  cardMaster   CardMaster           @relation("CardMasterHistory", fields: [cardMasterId], references: [id], onDelete: Restrict)
+  publishedFor CardMaster?          @relation("CardMasterPublished")
+  queueItem    CardUpdateQueueItem? @relation(fields: [queueItemId], references: [id], onDelete: SetNull)
+
+  @@unique([cardMasterId, version])
+  @@index([cardMasterId, createdAt])
+}
+
+/// One row per proposal version. Supersede by inserting a row; do not rewrite proposedSnapshot.
+model CardUpdateQueueItem {
+  id               String               @id @default(cuid())
+  cardMasterId     String?
+  state            CardUpdateQueueState
+  proposedSnapshot Json
+  sourceLabel      String?
+  provenance       Json?
+  version          Int
+  supersedesId     String?
+  createdAt        DateTime             @default(now())
+  reviewedAt       DateTime?
+  reviewerId       String?
+
+  cardMaster       CardMaster?           @relation(fields: [cardMasterId], references: [id], onDelete: SetNull)
+  supersedes       CardUpdateQueueItem?  @relation("CardUpdateVersionChain", fields: [supersedesId], references: [id], onDelete: SetNull)
+  supersededBy     CardUpdateQueueItem[] @relation("CardUpdateVersionChain")
+  reviewer         User?                 @relation("CardUpdateReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  revision         CardMasterRevision?
+
+  @@index([state, createdAt])
+  @@index([cardMasterId, version])
+}
+
+model InspectionSession {
+  id                      String                   @id @default(cuid())
+  cardMasterId            String?
+  submissionId            String?
+  inspectorId             String?
+  /// Client build that opened the session. Null = UNKNOWN.
+  softwareVersion         String?
+  /// Schema migration this API wrote. Not a client claim.
+  dbSchemaVersion         String?
+  notes                   String?
+  startedAt               DateTime                 @default(now())
+  endedAt                 DateTime?
+  createdAt               DateTime                 @default(now())
+  /// Latest assistive proposal. History lives on InspectionGradeProposal. Not a certificate grade.
+  proposedGrade           Decimal?                 @db.Decimal(3, 1)
+  proposedGradeAt         DateTime?
+  proposedGradeSource     String?
+  inspectorOverrideGrade  Decimal?                 @db.Decimal(3, 1)
+  overrideReason          String?
+  overrideAt              DateTime?
+  authenticity            AuthenticityDisposition  @default(REQUIRES_HUMAN_REVIEW)
+  /// Existing Slab.id (digital slab). Does not issue a serial.
+  slabId                  String?
+  /// Existing NFCRecord.id only. No tag secrets.
+  nfcRecordId             String?
+  /// Existing Certificate.id. Physical/digital serial stays on Certificate.serialNo.
+  certificateId           String?
+
+  cardMaster              CardMaster?              @relation(fields: [cardMasterId], references: [id], onDelete: SetNull)
+  submission              Submission?              @relation(fields: [submissionId], references: [id], onDelete: SetNull)
+  inspector               User?                    @relation("InspectionInspector", fields: [inspectorId], references: [id], onDelete: SetNull)
+  slab                    Slab?                    @relation(fields: [slabId], references: [id], onDelete: SetNull)
+  nfcRecord               NFCRecord?               @relation(fields: [nfcRecordId], references: [id], onDelete: SetNull)
+  certificate             Certificate?             @relation(fields: [certificateId], references: [id], onDelete: SetNull)
+  evidence                InspectionEvidence[]
+  categoryScores          InspectionCategoryScore[]
+  gradeProposals          InspectionGradeProposal[]
+
+  @@index([cardMasterId, startedAt])
+  @@index([inspectorId, startedAt])
+}
+
+model InspectionCategoryScore {
+  id          String                   @id @default(cuid())
+  sessionId   String
+  category    InspectionCategoryKind
+  /// Null = UNKNOWN. Not zero.
+  score       Decimal?                 @db.Decimal(4, 2)
+  /// Null = UNKNOWN. When set, 0–1.
+  confidence  Decimal?                 @db.Decimal(4, 3)
+  /// Who produced the score (INSPECTOR, ASSISTIVE_AI, MEASUREMENT, …). Null = UNKNOWN.
+  sourceLabel String?
+  provenance  Json?
+  session     InspectionSession        @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+
+  @@unique([sessionId, category])
+}
+
+/// Append-only. Original photos have no updatedAt and must not be replaced in place.
+model InspectionEvidence {
+  id              String                 @id @default(cuid())
+  sessionId       String
+  kind            InspectionEvidenceKind
+  /// Original photos and raw measurements stay true. Enhancements are false and point at derivedFromId.
+  immutable       Boolean                @default(true)
+  originalUrl     String?
+  measurement     Json?
+  marker          Json?
+  note            String?
+  softwareVersion String?
+  createdAt       DateTime               @default(now())
+  createdById     String?
+  derivedFromId   String?
+
+  session         InspectionSession      @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  createdBy       User?                  @relation("EvidenceAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+  derivedFrom     InspectionEvidence?    @relation("EvidenceDerivation", fields: [derivedFromId], references: [id], onDelete: SetNull)
+  derivatives     InspectionEvidence[]   @relation("EvidenceDerivation")
+
+  @@index([sessionId, createdAt])
+  @@index([derivedFromId])
+}
+
+/// Append-only assistive grade proposals. official certification is a Certificate, never this row.
+model InspectionGradeProposal {
+  id                     String                  @id @default(cuid())
+  sessionId              String
+  proposedGrade          Decimal?                @db.Decimal(3, 1)
+  proposedGradeSource    String?
+  inspectorOverrideGrade Decimal?                @db.Decimal(3, 1)
+  overrideReason         String?
+  authenticity           AuthenticityDisposition
+  categorySnapshot       Json
+  createdAt              DateTime                @default(now())
+  createdById            String?
+
+  session                InspectionSession       @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  createdBy              User?                   @relation("GradeProposalAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([sessionId, createdAt])
 }

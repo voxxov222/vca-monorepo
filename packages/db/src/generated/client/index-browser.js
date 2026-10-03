@@ -243,6 +243,122 @@ exports.Prisma.AuditLogScalarFieldEnum = {
   createdAt: 'createdAt'
 };
 
+exports.Prisma.CardMasterScalarFieldEnum = {
+  id: 'id',
+  vcaCardId: 'vcaCardId',
+  name: 'name',
+  setName: 'setName',
+  cardSetId: 'cardSetId',
+  collectorNumber: 'collectorNumber',
+  language: 'language',
+  rarity: 'rarity',
+  variant: 'variant',
+  finish: 'finish',
+  fieldProvenance: 'fieldProvenance',
+  legacyCardId: 'legacyCardId',
+  publishedRevisionId: 'publishedRevisionId',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
+exports.Prisma.CardMasterImageScalarFieldEnum = {
+  id: 'id',
+  cardMasterId: 'cardMasterId',
+  url: 'url',
+  role: 'role',
+  sourceLabel: 'sourceLabel',
+  retrievedAt: 'retrievedAt',
+  provenance: 'provenance',
+  createdAt: 'createdAt'
+};
+
+exports.Prisma.CardMasterRevisionScalarFieldEnum = {
+  id: 'id',
+  cardMasterId: 'cardMasterId',
+  version: 'version',
+  snapshot: 'snapshot',
+  sourceLabel: 'sourceLabel',
+  provenance: 'provenance',
+  createdAt: 'createdAt',
+  createdById: 'createdById',
+  queueItemId: 'queueItemId'
+};
+
+exports.Prisma.CardUpdateQueueItemScalarFieldEnum = {
+  id: 'id',
+  cardMasterId: 'cardMasterId',
+  state: 'state',
+  proposedSnapshot: 'proposedSnapshot',
+  sourceLabel: 'sourceLabel',
+  provenance: 'provenance',
+  version: 'version',
+  supersedesId: 'supersedesId',
+  createdAt: 'createdAt',
+  reviewedAt: 'reviewedAt',
+  reviewerId: 'reviewerId'
+};
+
+exports.Prisma.InspectionSessionScalarFieldEnum = {
+  id: 'id',
+  cardMasterId: 'cardMasterId',
+  submissionId: 'submissionId',
+  inspectorId: 'inspectorId',
+  softwareVersion: 'softwareVersion',
+  dbSchemaVersion: 'dbSchemaVersion',
+  notes: 'notes',
+  startedAt: 'startedAt',
+  endedAt: 'endedAt',
+  createdAt: 'createdAt',
+  proposedGrade: 'proposedGrade',
+  proposedGradeAt: 'proposedGradeAt',
+  proposedGradeSource: 'proposedGradeSource',
+  inspectorOverrideGrade: 'inspectorOverrideGrade',
+  overrideReason: 'overrideReason',
+  overrideAt: 'overrideAt',
+  authenticity: 'authenticity',
+  slabId: 'slabId',
+  nfcRecordId: 'nfcRecordId',
+  certificateId: 'certificateId'
+};
+
+exports.Prisma.InspectionCategoryScoreScalarFieldEnum = {
+  id: 'id',
+  sessionId: 'sessionId',
+  category: 'category',
+  score: 'score',
+  confidence: 'confidence',
+  sourceLabel: 'sourceLabel',
+  provenance: 'provenance'
+};
+
+exports.Prisma.InspectionEvidenceScalarFieldEnum = {
+  id: 'id',
+  sessionId: 'sessionId',
+  kind: 'kind',
+  immutable: 'immutable',
+  originalUrl: 'originalUrl',
+  measurement: 'measurement',
+  marker: 'marker',
+  note: 'note',
+  softwareVersion: 'softwareVersion',
+  createdAt: 'createdAt',
+  createdById: 'createdById',
+  derivedFromId: 'derivedFromId'
+};
+
+exports.Prisma.InspectionGradeProposalScalarFieldEnum = {
+  id: 'id',
+  sessionId: 'sessionId',
+  proposedGrade: 'proposedGrade',
+  proposedGradeSource: 'proposedGradeSource',
+  inspectorOverrideGrade: 'inspectorOverrideGrade',
+  overrideReason: 'overrideReason',
+  authenticity: 'authenticity',
+  categorySnapshot: 'categorySnapshot',
+  createdAt: 'createdAt',
+  createdById: 'createdById'
+};
+
 exports.Prisma.SortOrder = {
   asc: 'asc',
   desc: 'desc'
@@ -250,6 +366,10 @@ exports.Prisma.SortOrder = {
 
 exports.Prisma.NullableJsonNullValueInput = {
   DbNull: Prisma.DbNull,
+  JsonNull: Prisma.JsonNull
+};
+
+exports.Prisma.JsonNullValueInput = {
   JsonNull: Prisma.JsonNull
 };
 
@@ -319,6 +439,37 @@ exports.TamperStatus = exports.$Enums.TamperStatus = {
   TAMPERED: 'TAMPERED'
 };
 
+exports.CardUpdateQueueState = exports.$Enums.CardUpdateQueueState = {
+  NEW: 'NEW',
+  AUTO_VERIFIED: 'AUTO_VERIFIED',
+  NEEDS_REVIEW: 'NEEDS_REVIEW',
+  APPROVED: 'APPROVED',
+  PUBLISHED: 'PUBLISHED'
+};
+
+exports.AuthenticityDisposition = exports.$Enums.AuthenticityDisposition = {
+  INDICATORS: 'INDICATORS',
+  POTENTIAL_CONCERNS: 'POTENTIAL_CONCERNS',
+  REQUIRES_HUMAN_REVIEW: 'REQUIRES_HUMAN_REVIEW'
+};
+
+exports.InspectionCategoryKind = exports.$Enums.InspectionCategoryKind = {
+  CENTERING: 'CENTERING',
+  CORNERS: 'CORNERS',
+  EDGES: 'EDGES',
+  SURFACE: 'SURFACE',
+  PRINT_QUALITY: 'PRINT_QUALITY'
+};
+
+exports.InspectionEvidenceKind = exports.$Enums.InspectionEvidenceKind = {
+  ORIGINAL_PHOTO: 'ORIGINAL_PHOTO',
+  MEASUREMENT: 'MEASUREMENT',
+  MARKER: 'MARKER',
+  NOTE: 'NOTE',
+  REFERENCE_COMPARISON: 'REFERENCE_COMPARISON',
+  ENHANCEMENT: 'ENHANCEMENT'
+};
+
 exports.Prisma.ModelName = {
   User: 'User',
   Session: 'Session',
@@ -330,7 +481,15 @@ exports.Prisma.ModelName = {
   Slab: 'Slab',
   NFCRecord: 'NFCRecord',
   QRRecord: 'QRRecord',
-  AuditLog: 'AuditLog'
+  AuditLog: 'AuditLog',
+  CardMaster: 'CardMaster',
+  CardMasterImage: 'CardMasterImage',
+  CardMasterRevision: 'CardMasterRevision',
+  CardUpdateQueueItem: 'CardUpdateQueueItem',
+  InspectionSession: 'InspectionSession',
+  InspectionCategoryScore: 'InspectionCategoryScore',
+  InspectionEvidence: 'InspectionEvidence',
+  InspectionGradeProposal: 'InspectionGradeProposal'
 };
 
 /**
