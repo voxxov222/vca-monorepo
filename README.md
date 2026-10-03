@@ -41,6 +41,10 @@ With API on `:3001` and Slabook on `:5173`:
 
 Digital certificates issued on grading finalize use serials `VCA-D-YY-####` and create an `ASSEMBLY` slab.
 
+## Card inspection foundation
+
+Admin shell (empty states, not a grader bypass): `http://localhost:8080/admin/inspection` with `npm run dev:slabook`. API routes under `/api/card-intelligence/*` need `npm run dev:api`. See `docs/CARD-INTELLIGENCE.md`. The SQL migration is in-repo and was not applied to production.
+
 ## Rules
 
 1. Do not invent API results, prices, NFC, or certificates.

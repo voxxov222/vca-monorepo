@@ -24,6 +24,7 @@ import Slabook from "./pages/Slabook";
 import Submit from "./pages/Submit";
 import Profile from "./pages/Profile";
 import { VerifyQrPage, VerifySerialPage } from "./pages/Verify";
+import InspectionAdmin from "./pages/InspectionAdmin";
 
 const queryClient = new QueryClient();
 
@@ -56,6 +57,7 @@ const App = () => (
               <Route path="/collector/:userId" element={<Profile />} />
               <Route path="/card/:cardId" element={<CardDetail />} />
               <Route path="/admin" element={<AdminOS />} />
+              <Route path="/admin/inspection" element={<InspectionAdmin />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Route>
